@@ -1,0 +1,33 @@
+# ── 데이터 (절대 커밋하지 않는다) ──────────────────────────
+# LSWMD.pkl은 214MB. GitHub 파일 상한은 100MB이고,
+# 애초에 원본 데이터는 코드 저장소에 들어갈 것이 아니다.
+data/*
+!data/README.md
+*.pkl
+*.npz
+*.mat
+*.zip
+
+# ── 결과물 ────────────────────────────────────────────────
+# 그림은 골라서 수동으로 추가한다 (figures/keep/ 아래)
+figures/*
+!figures/keep/
+!figures/keep/.gitkeep
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ── Jupyter ───────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── 에디터 / OS ───────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
