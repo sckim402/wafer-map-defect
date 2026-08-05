@@ -11,6 +11,10 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")  # 창 없이 파일로만 저장
 import matplotlib.pyplot as plt
+
+plt.rcParams["font.family"] = "Malgun Gothic"
+plt.rcParams["axes.unicode_minus"] = False
+
 from matplotlib.colors import ListedColormap
 
 import config
