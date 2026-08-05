@@ -48,7 +48,14 @@ def main():
 
     print("[2/5] 라벨 펼치는 중 (중첩 ndarray -> 문자열)")
     df["label"] = df["failureType"].map(unwrap_label)
-    df["split_orig"] = df["trainTestLabel"].map(unwrap_label)
+    # 원본 WM-811K는 컬럼명에 오타가 있다: 'trianTestLabel' (train -> trian).
+    # 미러/재배포본에 따라 정상 표기인 경우도 있어 둘 다 받는다.
+    split_col = next(
+        (c for c in ("trainTestLabel", "trianTestLabel") if c in df.columns), None
+    )
+    if split_col is None:
+        raise SystemExit(f"[중단] 분할 라벨 컬럼 없음. 실제 컬럼: {list(df.columns)}")
+    df["split_orig"] = df[split_col].map(unwrap_label)
 
     labeled = df[df["label"].notna()].copy()
     print(f"      라벨 보유: {len(labeled):,}장 "
