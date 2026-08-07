@@ -1,6 +1,6 @@
 # W2 — 세 지표를 같은 밴드에서 비교한다
 
-**날짜**: 2026-08-05
+**날짜**: 2026-08-07
 **스크립트**: `src/feature_table.py`
 **그림**: `figures/feature_table.png`
 **선행**: `docs/w2_azimuth.md`, `docs/w2_confound.md`, `docs/w2_features.md`
@@ -154,7 +154,7 @@ Edge-Loc에서 0.318(낮음, 증분 +0.021~+0.056).
 
 **CV의 역할은 도입 당시의 상정과 다르다.** `azimuth.py`는 CV를 Edge-Ring↔Edge-Loc
 판별자로 도입했으나(헤드라인 0.927), 실제 기여 지점은 Edge-Loc 계열 분리다.
-→ D-011로 기록.
+→ **D-012**로 기록. (D-011은 edge_contrast 채택 항목이다)
 
 ---
 
