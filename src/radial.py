@@ -61,6 +61,36 @@ R1, R2 = 1.0 / 3.0, 2.0 / 3.0
 ALPHA = 1.0
 
 
+def r_shift(m):
+    """**F1c — 경계 없는 반경 대조.** 파라미터가 0개다 (D-014).
+
+        r_shift = mean(r | 불량 die) − mean(r | 전체 유효 die)
+
+    음수 = 중심 편중, 양수 = 가장자리 편중.
+    **웨이퍼 자신의 기하를 기준선으로 삼는 차분**이므로,
+    `r_med`가 배경에 지배당한 문제(면적이 r²로 커짐)가 구조적으로 제거된다.
+
+    왜 필요한가 (D-014): `Center`의 반경 초과분은 **매끄럽게 감소**한다
+    (0.605 → 0.461 → 0.278 → 0.167 → …). `Edge-Ring`의 층별 프로파일이
+    0.832 → 0.172로 **4.8배 급락**한 것과 다르다.
+    **즉 Center에는 D-007식으로 정할 물리적 경계가 없다.**
+    경계를 두면 어떤 값이든 임의 선택이 되므로, **경계를 없앤다.**
+    """
+    a = np.asarray(m)
+    v = a != config.VAL_OUTSIDE
+    if not v.any():
+        return np.nan
+    rr, cc = np.nonzero(v)
+    cy, cx = (rr.min() + rr.max()) / 2, (cc.min() + cc.max()) / 2
+    hy = max((rr.max() - rr.min()) / 2, 1e-9)
+    hx = max((cc.max() - cc.min()) / 2, 1e-9)
+    r = np.hypot((rr - cy) / hy, (cc - cx) / hx)
+    f = a[rr, cc] == config.VAL_FAIL
+    if f.sum() < 1:
+        return np.nan
+    return float(r[f].mean() - r.mean())
+
+
 def radial_feats(m, r1=R1, r2=R2, alpha=ALPHA):
     a = np.asarray(m)
     valid = a != config.VAL_OUTSIDE
