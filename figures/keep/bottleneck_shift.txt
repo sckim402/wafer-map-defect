@@ -1,0 +1,8 @@
+혼동 쌍 상호 오분류율 — seed 3개 평균, D-003 분할 out-of-fold
+pair                           Edge (3)   + Radial (5)    + Shape (6)
+Center <-> Loc                    0.188          0.064          0.065
+Loc <-> Scratch                   0.186          0.168          0.054
+Center <-> Edge-Loc               0.133          0.013          0.011
+Edge-Loc <-> Loc                  0.112          0.099          0.102
+
+macro-F1                          0.582          0.768          0.837
