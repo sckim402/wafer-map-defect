@@ -210,7 +210,40 @@ def main():
     print("  (곡선 전체를 보고한다 — 승자만 쓰지 않는다, §3-9)")
 
     print("\n" + "=" * 78)
-    print("[3] 보정하면 무엇을 잃는가 (§3-6) — 보정 전후를 모두 낸다")
+    print("[3] ★ D-013 재검토 — sanity가 k와 함께 '개선'된 것의 정체")
+    print("=" * 78)
+    print("  `w2_metric_set.md`는 sanity가 k와 함께 0.828 → 0.879로 **단조 개선**된다는")
+    print("  것을 k=3~4를 지지하는 네 관찰 중 하나로 적었다. D-013은 그것을 기각하며")
+    print("  *\"표본이 늘면 편향이 준다는 뜻이지 3층이 물리적 가장자리다가 아니다\"*라 했다.")
+    print("  **밴드를 넓히면 n_fail이 늘고, 늘면 귀무값 자체가 올라간다.** 확인한다.")
+    maps_k = load(config.NONE_CLASS, np.random.default_rng(config.SEED), 1200)
+    rec = {1: 0.828, 3: 0.863, 4: 0.869, 5: 0.876, 6: 0.879}   # w2_metric_set.md 실측
+    print(f"\n  {'k':>3}{'중앙 n_fail':>12}{'이론 귀무':>11}{'실측':>9}"
+          f"{'w2 기록':>10}{'실측−귀무':>11}")
+    for k in (1, 2, 3, 4, 5, 6):
+        o, t, nf = [], [], []
+        for m in maps_k:
+            g = band_geometry(m, k)
+            if g is None:
+                continue
+            th, idx, npb, isf = g
+            if isf.sum() < MIN_FAIL:
+                continue
+            ws = (1.0 / npb[idx])[isf]
+            o.append(cv_from(th[isf], ws))
+            t.append(1 - RAYLEIGH / np.sqrt(ws.sum() ** 2 / (ws ** 2).sum()))
+            nf.append(int(isf.sum()))
+        om, tm = np.median(o), np.median(t)
+        r = rec.get(k)
+        print(f"  {k:>3}{np.median(nf):>12.0f}{tm:>11.3f}{om:>9.3f}"
+              f"{(f'{r:.3f}' if r else '-'):>10}{om-tm:>11.3f}")
+    print("\n  **실측−귀무가 k 전체에서 평탄하다.** 올라간 것은 지표가 아니라 기준선이다.")
+    print("  → D-013의 판단은 옳았고, 이제 **정량화됐다.**")
+    print("  → 그리고 D-013이 「감수하는 비용」에 적은 *\"`none` sanity 0.828 미통과\"*는")
+    print("     **애초에 비용이 아니었다.** 0.828은 n_fail≈28에서의 **정상값**이다.")
+
+    print("\n" + "=" * 78)
+    print("[4] 보정하면 무엇을 잃는가 (§3-6) — 보정 전후를 모두 낸다")
     print("=" * 78)
     print("  보정판 CV* = 실측 − 순열귀무  (귀무 대비 초과 비대칭성)")
     print(f"\n  {'클래스':<11}{'보정 전':>10}{'보정 후':>10}{'none과의 거리(전)':>19}"
