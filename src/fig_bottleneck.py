@@ -21,22 +21,51 @@
 - **`Edge-Loc↔Loc`만 강조**, 나머지는 흐리게. 그 하나가 결론이므로
 - **축 라벨은 영문** (로드맵 §4)
 
+## 크기 — 최종 인쇄 치수로 그린다 (2026-08-20 개정)
+
+**이전 판은 `figsize=(7.0, 3.6)`으로 그려 DOC에 9.6 cm(=3.78 in) 폭으로 넣었다.**
+축소율이 **0.548**이라 코드의 pt가 그대로 인쇄되지 않았다 —
+끝점 라벨 9 pt → **실제 4.9 pt**, 눈금 10 pt → 5.5 pt.
+로드맵 §4가 *"그림 눈금 5pt 가독"*을 확인 항목으로 남긴 것이 이 지점이다.
+
+**해법은 폰트를 키우는 게 아니라 캔버스를 최종 치수로 잡는 것이다.**
+`figsize = (9.6cm, 4.87cm)`로 그리면 축소율이 1이 되고,
+**지면 점유는 그대로인 채 코드의 pt = 인쇄 pt**가 된다.
+같은 9.6 cm 안에서 끝점 라벨이 4.9 → 6.5 pt, 눈금이 5.5 → 7 pt로 커진다.
+
+두 가지가 여기에 딸려 온다.
+
+1. **`bbox_inches="tight"`를 쓰지 않는다.** 내용에 맞춰 잘라내면 저장된 폭이
+   `figsize`와 달라져 *"100%로 넣는다"*는 전제가 깨진다. `tight_layout`만 쓰고
+   그대로 저장해 **출력 픽셀 = figsize × dpi**를 보장한다.
+   끝점 라벨은 `xlim` 오른쪽 여백 안에 들어가므로 잘리지 않는다.
+2. **선 굵기·마커도 절대 pt다.** 축소율이 1이 되면 `lw=2.8`은 그대로 2.8 pt라
+   작은 그림에서 과하다. 굵기와 마커를 같이 내린다.
+
+**dpi는 600.** 작은 글자는 300 dpi에서 획이 뭉친다. 파일은 커지지만
+제출 제약은 **문서 2 MB**이고 PNG는 그 안에서 여유가 있다.
+
 ## 재현성
 
 수치를 하드코딩하지 않고 **캐시된 특징 + D-003 분할에서 매번 다시 계산한다.**
 seed 3개 평균이며, 같은 값이 `docs/abstract_draft.md`와 D-018에 인용돼 있다.
 → 그림과 본문 숫자가 갈라질 수 없다.
 """
+import sys
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, f1_score
 
 import config
 
 plt.rcParams["font.family"] = "DejaVu Sans"      # 영문 라벨만 쓴다
+# Windows 콘솔은 cp949다. 출력을 파일로 넘기면 아래 한글 print가
+# UnicodeEncodeError로 죽는다 — 그림은 이미 저장된 뒤라 더 헷갈린다
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 STAGES = [
     ("Edge (3)",      ("cov", "ctr", "cv")),
@@ -49,6 +78,16 @@ SHOW = [("Center", "Loc"), ("Loc", "Scratch"),
 HILITE = ("Edge-Loc", "Loc")
 
 OUT_DIR = config.ROOT / "figures" / "keep"
+
+# ── 인쇄 치수 — 여기가 이 그림의 유일한 크기 근거다 ──────────
+# 9.6 cm는 D-020에서 1페이지 실측으로 확정된 값이다. 바꾸지 않는다.
+# 높이는 이전 판의 지면 점유(9.6 × 1050/2070)를 그대로 유지한다.
+CM = 1 / 2.54
+PRINT_W_CM, PRINT_H_CM = 9.6, 4.87
+DPI = 600
+
+# 전부 인쇄 pt다 — 축소율이 1이므로 코드 값 = 종이 위 값
+FS_TICK, FS_AXIS, FS_LABEL, FS_XTICK = 7.0, 7.5, 6.5, 6.8
 
 
 def oof(X, y, folds):
@@ -105,21 +144,57 @@ def main():
 
     # ── 그림 ──────────────────────────────────────────────
     # 세로를 줄였다 — 초록은 텍스트가 대부분이라 그림이 납작해야 한다
-    fig, ax = plt.subplots(figsize=(7.0, 3.6))
+    fig, ax = plt.subplots(figsize=(PRINT_W_CM * CM, PRINT_H_CM * CM))
     xs = np.arange(len(STAGES))
     ymax = max(max(v) for v in rates.values())
 
+    # 회색을 이전 `#9e9e9e`보다 어둡게 잡는다 — 선이 얇아지면 같은 명도라도
+    # 종이에서 옅어 보인다. 강조 대비는 굵기가 이미 충분히 만든다
     for pr in SHOW:
         hot = pr == HILITE
         ax.plot(xs, rates[pr], "o-",
-                lw=2.8 if hot else 1.4, ms=7 if hot else 5,
-                color="#c62828" if hot else "#9e9e9e",
+                lw=1.6 if hot else 0.9, ms=3.6 if hot else 2.6,
+                color="#c62828" if hot else "#757575",
                 zorder=3 if hot else 2)
 
-    # 끝점 라벨 — 겹치면 세로로 밀어낸다.
+    # 값을 점 위에 찍어보고 **뺐다.** 강조 라벨 바로 위에 놓여 둘이 한 덩어리로
+    # 읽혔다. 좁은 그림에서 요소를 더하는 것은 가독성을 깎는다 —
+    # 잔여 병목의 크기는 y축 0.10 격자선이 이미 말해주고, 정확한 값은 본문에 있다.
+    # **이 그림의 주장은 숫자가 아니라 "한 선만 평평하다"다.**
+
+    # macro-F1을 x축 눈금 둘째 줄로 — 아래 여백을 먹지 않는다
+    ax.set_xticks(xs)
+    ax.set_xticklabels([f"{n}\n(macro-F1 {m:.3f})" for (n, _), m in zip(STAGES, macros)],
+                       fontsize=FS_XTICK)
+    # y 눈금을 9개에서 5개로 — 작은 그림에서 눈금 글자끼리 붙으면
+    # 개별 숫자가 커져도 덩어리로 읽힌다. 간격이 곧 가독성이다
+    ax.yaxis.set_major_locator(MultipleLocator(0.05))
+    ax.tick_params(labelsize=FS_TICK, length=2, pad=2)
+    ax.set_xlim(-0.12, len(STAGES) - 1 + 1.10)
+    ax.set_ylim(0, ymax * 1.12)
+    ax.set_xlabel("Feature set", fontsize=FS_AXIS, labelpad=4)
+    ax.set_ylabel("Mutual misclassification rate", fontsize=FS_AXIS, labelpad=3)
+    ax.grid(axis="y", ls=":", lw=0.4, alpha=0.55)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    for sp in ("left", "bottom"):
+        ax.spines[sp].set_linewidth(0.6)
+
+    fig.tight_layout(pad=0.3)
+
+    # ── 끝점 라벨 — 레이아웃이 확정된 뒤에 놓는다 ───────────────
+    # 겹칠 때 밀어낼 간격은 **글자 크기에서 나와야 한다.**
+    # 이전 판은 `MIN_GAP = ymax * 0.075`라는 데이터 비율이었다. 캔버스를
+    # 인쇄 치수로 줄이자 같은 비율이 6.9 pt가 되어 `Center↔Loc`과
+    # `Loc↔Scratch`가 붙었다 — **비율은 크기가 바뀌면 따라오지 않는다.**
+    # 그려진 축에서 pt를 데이터 단위로 환산한다. 치수를 다시 바꿔도 유지된다.
+    fig.canvas.draw()
+    inv = ax.transData.inverted()
+    gap_px = FS_LABEL * 1.45 * fig.dpi / 72          # 행간 1.45배
+    MIN_GAP = abs(inv.transform((0, gap_px))[1] - inv.transform((0, 0))[1])
+
     # 구분자는 '↔'다. 클래스명에 하이픈이 있어 '–'를 쓰면
     # `Center–Edge-Loc`처럼 읽혀 쌍인지 이름인지 구분되지 않는다.
-    MIN_GAP = ymax * 0.075
     placed, y_lab = [], {}
     for pr in sorted(SHOW, key=lambda p: -rates[p][-1]):   # 위에서 아래로
         yv = rates[pr][-1]
@@ -131,27 +206,16 @@ def main():
     for pr in SHOW:
         hot = pr == HILITE
         ax.annotate(f"{pr[0]} ↔ {pr[1]}", (xs[-1], y_lab[pr]),
-                    xytext=(10, 0), textcoords="offset points",
-                    va="center", fontsize=9, annotation_clip=False,
-                    color="#c62828" if hot else "#616161",
+                    xytext=(4, 0), textcoords="offset points",
+                    va="center", fontsize=FS_LABEL, annotation_clip=False,
+                    color="#c62828" if hot else "#424242",
                     fontweight="bold" if hot else "normal")
 
-    # macro-F1을 x축 눈금 둘째 줄로 — 아래 여백을 먹지 않는다
-    ax.set_xticks(xs)
-    ax.set_xticklabels([f"{n}\n(macro-F1 {m:.3f})" for (n, _), m in zip(STAGES, macros)],
-                       fontsize=10)
-    ax.set_xlim(-0.15, len(STAGES) - 1 + 1.05)
-    ax.set_ylim(0, ymax * 1.10)
-    ax.set_xlabel("Feature set", fontsize=11, labelpad=8)
-    ax.set_ylabel("Mutual misclassification rate", fontsize=11)
-    ax.grid(axis="y", ls=":", lw=0.6, alpha=0.6)
-    for sp in ("top", "right"):
-        ax.spines[sp].set_visible(False)
-
-    fig.tight_layout()
     out = OUT_DIR / "bottleneck_shift.png"
-    fig.savefig(out, dpi=300, bbox_inches="tight")
-    print(f"저장: {out}")
+    # bbox_inches="tight"를 쓰지 않는다 — 저장 폭 = figsize × dpi여야
+    # DOC에 9.6 cm로 넣었을 때 축소율이 정확히 1이 된다
+    fig.savefig(out, dpi=DPI)
+    print(f"저장: {out}  ({PRINT_W_CM} × {PRINT_H_CM} cm @ {DPI} dpi, 축소율 1.0)")
     print("\n  읽는 법: 세 선은 내려가고 **강조된 한 선만 평평하다.**")
     print("  그 하나가 D-018의 결론 — 남은 병목은 특징 부재가 아니라")
     print("  두 패턴 사이에 경계가 없어서 남는다.")
