@@ -8,6 +8,11 @@
 > §3-14가 잡는 종류 — *계산 실수가 아니라 안 떠올린 질문* — 을 잡을 수 있는
 > **유일한 외부 소스**가 선행 논문의 방법론 절이다. 이것이 D-021 대체 장치 ②다.
 
+> **⚠ 개정 이력**
+> - **v1 (오전)**: 7편. **Wu et al. 2015 원논문은 미확보**로 남겼다
+> - **v2 (오후, 이 문서)**: **원논문 전문 입수 → 8편.**
+>   **v1의 §4·§5·§6을 정정한다.** 무엇이 뒤집혔는지는 §5-0과 §6-0에 적었다
+
 ---
 
 ## 0. 방법 — 요약문이 아니라 원문을 읽었다
@@ -19,16 +24,20 @@
 → **PDF를 내려받아 PyMuPDF로 전문 추출 후 정규식으로 방법론 절을 뽑았다.**
 `split | lot | stratif | leak | k-fold`, `macro-F1 | per-class | balanced accuracy |
 accuracy of`, `defect density | number of defect | die count | wafer size | confound`
-세 패턴, 히트마다 전후 160자.
+세 패턴, 히트마다 전후 160자. 히트가 걸린 절은 **원문 문단째로 다시 읽었다.**
 
-**이하의 모든 인용은 원문 추출 텍스트에서 나온 것이다.** 못 읽은 것은 §5에 적었다.
+**이하의 모든 인용은 원문 추출 텍스트에서 나온 것이다.**
+
+> **PDF는 리포에 넣지 않는다** — IEEE 구독본이다. `.gitignore`에 `docs/*.pdf`를 추가했다.
+> **서지 정보와 인용문만 이 문서에 남긴다.**
 
 ---
 
-## 1. 읽은 것 — 7편
+## 1. 읽은 것 — 8편
 
 | # | 논문 | 연도 | 성격 |
 |---|---|---|---|
+| **W** | **Wu, Jang, Chen — Wafer Map Failure Pattern Recognition and Similarity Ranking for Large-Scale Data Sets** (IEEE TSM **28**(1):1-12, DOI `10.1109/TSM.2014.2364237`) | **2015** | ★ **WM-811K 원논문.** 피인용 377 |
 | A | Architecture-Aware Explanation Auditing for Industrial Visual Inspection (arXiv 2605.14255) | 2026 | XAI 감사 · preprint |
 | B | Wafer Map Defect Classification Using Autoencoder-Based Data Augmentation and CNN (arXiv 2411.11029) | 2024 | 증강+CNN |
 | C | Wafer map failure pattern classification using geometric transformation-invariant CNN (Sci Rep 13:8127) | 2023 | 회전·플립 불변 CNN |
@@ -39,10 +48,11 @@ accuracy of`, `defect density | number of defect | die count | wafer size | conf
 
 ---
 
-## 2. ① 분할 정책 — **lot 단위는 표준이 아니다**
+## 2. ① 분할 정책 — **lot 단위는 표준이 아니고, 원논문도 아니다**
 
 | 논문 | 분할 | lot 언급 |
 |---|---|---|
+| **W (원논문)** | **전문가가 선별한 train / 전문가가 무작위로 고른 test** | ⚠ **데이터 설명에서만** |
 | **A** | **lot-group split 70/15/15** | ✅ **명시** |
 | B | 랜덤 4:1 | ⚠ **데이터 설명에서만** |
 | C | 크기별 train set(최대 6400) | ❌ **분할 정책 서술 자체가 없음** |
@@ -51,117 +61,174 @@ accuracy of`, `defect density | number of defect | die count | wafer size | conf
 | F | 300/100/100 (합성 500장/클래스) | ❌ |
 | G | 비지도 — 분할 없음 | ❌ |
 
-**A의 원문**:
-> "The dataset is partitioned into training, validation, and test sets in a 70/15/15
-> ratio using a **lot-group split**. Under this scheme, all wafers originating from the
-> same manufacturing lot are confined to a single partition… Lots are identified using
-> the **`lotName` field** in the WM-811K metadata… This choice addresses the
-> **information-leakage risk** that arises from the correlation between nearby wafers
-> in the same lot: a simple random split would allow the model to exploit lot-specific
-> defect patterns shared between training and test samples, **inflating apparent test
-> performance**."
+### 2-A. ★ 원논문의 분할은 lot 단위가 아니다 — **§7의 서술을 정밀화한다**
 
-**→ D-003과 같은 논거, 같은 필드(`lotName`)다.** 우리 판단이 재발명이 아니라는
-외부 확인이 하나 생겼다.
+**W 원문 (§VI-A)**:
+> "The data set was divided into a training set … and a test set … For creating the
+> training set, **a diverse range of wafer maps were selected to include each pattern
+> type** to ensure that the constructed model would be robust. Conversely, **the test
+> set comprised wafer maps that were randomly selected by domain experts.**
+> Approximately 20% of the wafer maps were labeled … (**54 356 in the training set and
+> 118 595 in the test set**) … In addition, **both training and test sets comprised
+> unique wafer maps**."
 
-### 2-A. ★ 더 센 발견은 B다
+**lot이라는 단어는 분할 서술에 없다.** 원논문의 분할은
+**전문가 선별(purposive sampling)**이고, 통제한 것은 **lot이 아니라 중복**이다.
 
-B는 **lot 구조를 알고 있다**:
-> "The dataset was collected from **47,543 physical lots** from a FAB, with each lot
-> consisting of 25 wafers."
+> **CLAUDE.md §7의 「원저자 분할도 lot 단위이나…」는 취소 대상이 아니다.**
+> 그 문장의 근거는 논문이 아니라 **우리 실측**이다 —
+> `w3_split.md` §③: **교차 lot 0개 / 10,762개** (8종만 봐도 0 / 8,047).
+> **즉 「결과적으로 lot이 교차하지 않는다」는 참이고, 「lot 단위로 나눴다」는 논문 근거가 없다.**
+> 정확한 서술로 바꾼다: **「원저자 분할은 전문가 선별이며, 실측 결과 lot 누수는 0이다」.**
+> 의도가 아니라 부수 효과일 수 있다(lot이 연속 블록이라 lot 단위로 훑으면 자연히 그렇게 된다).
 
-**그러고도 분할은 랜덤 4:1이다.** *"lot이 뭔지 몰라서 안 한 것"*이 아니라
-**알면서 분할에 쓰지 않았다.** 헤드라인은 **accuracy 98.56%**다.
+**부수 확인** — 표본 크기가 비대칭이다. **test가 train의 2.2배**(118,595 vs 54,356)다.
+8종 부분집합에서는 반대로 train 17,625 / test 7,894(`w3_split.md`)이므로,
+**`none`이 test 쪽에 몰려 있다.** 우리가 관찰한 클래스별 분포 이동과 같은 뿌리다.
 
-> **이것이 이 스캔의 1번 수확이다.** 7편 중 lot 단위 분할은 **1편(A, 2026 preprint)**.
-> **lot 단위 분할은 이 분야의 표준이 아니고, 우리는 소수파다.**
-> D-003은 성능이 아니라 누수 논거로 정한 것이므로 **바꿀 이유가 없다.**
-> 다만 **「표준을 따랐다」고 쓰면 거짓이다** — 정확한 서술은
-> **「lot 단위 분할은 소수파이며, 우리는 누수 근거로 그쪽을 택했다」**이다.
+### 2-B. B는 lot 구조를 알면서 안 썼다
 
-### 2-B. C는 분할 정책을 아예 안 적었다
+B는 *"the dataset was collected from **47,543 physical lots**, with each lot consisting
+of 25 wafers"*라고 쓴다. **그러고도 분할은 랜덤 4:1이고 헤드라인은 accuracy 98.56%다.**
+몰라서 안 한 게 아니라 알면서 분할에 쓰지 않았다.
+
+> ⚠ **B의 숫자는 원논문과 다르다.** 원논문은 **46,293 lots**다(§VI-A).
+> B가 어디서 47,543을 가져왔는지 불명이다. **우리는 원논문 값을 쓴다.**
+
+### 2-C. C는 분할 정책을 아예 안 적었다
 
 `split|lot|stratif|leak|fold` **히트 0건.** Scientific Reports 게재본에서
 train/test 구성 방식이 서술되지 않는다. **재현 가능성의 하한이 이 정도다.**
 
+**→ 판정: lot 단위 분할은 8편 중 1편(A, 2026 preprint). 우리는 소수파다.**
+**D-003은 성능이 아니라 누수 논거로 정한 것이므로 바꿀 이유가 없다.**
+**단 「표준을 따랐다」고 쓰면 거짓이다.**
+
 ---
 
-## 3. ② 보고 지표 — **accuracy 헤드라인이 여전히 다수**
+## 3. ② 보고 지표 — **accuracy 헤드라인은 원논문부터다**
 
 | 논문 | 헤드라인 | per-class | accuracy 반대 논거 |
 |---|---|---|---|
-| A | **balanced acc + macro-F1** | ✅ per-class F1 (radar) | ✅ **명시** |
-| B | **accuracy 98.56%** | 혼동행렬 대각만 | ❌ |
-| C | **accuracy** | 클래스별 accuracy 차이 | ❌ |
-| D | **accuracy 85.0% (macro-F1 0.798)** | ✅ per-class recall | ✅ **명시** |
+| **W (원논문)** | **accuracy 94.63%** | 혼동행렬 대각 | ❌ |
+| A | balanced acc + macro-F1 | ✅ per-class F1 | ✅ **명시** |
+| B | accuracy 98.56% | 혼동행렬 대각 | ❌ |
+| C | accuracy | 클래스별 accuracy 차이 | ❌ |
+| D | accuracy 85.0% (macro-F1 0.798) | ✅ per-class recall | ✅ **명시** |
 | E | Precision/Recall/F1/Accuracy 4종 | ❌ | ❌ |
-| F | **accuracy 99.0%** | 혼동행렬 | ❌ |
+| F | accuracy 99.0% | 혼동행렬 | ❌ |
 | G | 혼동행렬 (군집) | ✅ | — |
 
-**A의 원문**:
-> "Because the majority class alone exceeds four-fifths of the labelled data, **raw
-> accuracy is an uninformative summary of model behaviour**; this study therefore
-> adopts balanced accuracy and macro-F1 as primary performance metrics."
+**W 전문에서 `precision` 0회 · `recall` 0회 · `F1` 0회다.** 표 제목이 그대로
+**"TABLE IV — ACCURACY COMPARISON FOR WMFPR"**이다.
 
-### 3-A. ★ D는 우리 결론과 같은 문장을 쓴다
+### 3-A. 다만 원논문은 불균형을 **손실 쪽에서** 처리한다
 
-> "**per-class recall on morphologically ambiguous classes can matter more for yield
-> management than aggregate accuracy.** A classifier with high aggregate accuracy that
-> systematically [misroutes a class]…"
+> "each failure pattern type is **equally crucial, regardless of the number of samples** …
+> the new cost value for each pattern type was **proportional to the inverse of its
+> corresponding sample size**."
 
-그리고 D가 지목한 최대 실패 클래스는 **`Edge-Loc`**이며,
-**`Scratch`로 81% 오분류**된다고 보고한다. `Loc`은 *"an intrinsically hard class
-that no head solves"*.
+**동기는 macro-F1과 같다** — 클래스를 동등하게 본다. **적용 지점만 지표가 아니라 비용이다.**
+그래서 **모델은 균형을 맞추고 보고는 accuracy로 한다.** 이 조합이
+*"어느 클래스가 왜 틀렸나"*를 숫자에서 지운다. 우리가 accuracy를 금지한 이유와 정확히 같다.
 
-> **우리 병목과 대상이 겹친다** — 우리는 `Loc↔Scratch`(2단계) ·
-> `Edge-Loc↔Loc`(3단계). **D는 `Edge-Loc→Scratch`.**
-> 세 클래스가 같은 삼각형 안에 있다. **다른 방법론(양자 회로)·다른 특징에서도
-> 같은 클래스 묶음이 병목으로 나온다** — 우리 경로 의존이 아닐 가능성을 지지하는
-> **외부 정황**이다. ⚠ **정황이지 증거가 아니다** — D는 5클래스 구성·다른 전처리다.
-> **§3-14대로 「이 투입 순서에서의 관찰」을 떼는 근거로 쓰지 않는다.**
+### 3-B. ★ 원논문의 혼동 서술이 우리 진단 (c)와 같다
 
-**판정**: per-class 보고 자체는 드물지 않다(7편 중 4편).
-**「accuracy를 주 지표로 쓰지 않는다」는 소수(2편)**다.
-**우리 방침(§7 accuracy 금지 + per-class F1 + 혼동 쌍)은 유지한다.**
+> "The matrix shows that **Local was frequently confused with other failure types.**
+> … Although the wafer maps were misclassified, users generally accept the prediction
+> because these wafer maps **seem to saddle across the boundary of two types**."
 
----
+**데이터셋을 만든 사람들이 `Loc` 경계 혼동을 「두 유형의 경계에 걸쳐 있다」로 설명한다.**
+우리 3단계 병목 `Edge-Loc↔Loc`의 진단 (c) — *"구배가 연속이라 임계값이 없다"* — 와
+**같은 주장이다.** 그들은 육안 근거(Fig. 13(b))이고, 우리는 **층별 비 1.81→1.07 수렴**이라는
+측정치다.
 
-## 4. ③ 교란 통제 — **대응물을 못 찾았다**
+> **⚠ 이것을 「검증됐다」로 쓰지 않는다.** 원논문은 8종 통합 SVM이고 우리는 6특징 구성이다.
+> 쓸 수 있는 것은 **「원논문도 같은 클래스에서 같은 성격의 혼동을 보고했다」**는 정황뿐이다.
+> D(양자 회로)의 `Edge-Loc→Scratch` 81% 오분류까지 합치면
+> **다른 방법론 3개가 같은 클래스 삼각형에서 막힌다.** §3-14대로
+> **「이 투입 순서에서의 관찰」을 떼는 근거로는 쓰지 않는다.**
 
-`defect density | number of defect | defect count | failed die | die count |
-wafer size | confound` 패턴:
-
-- **B·C·D·F·G: 히트 0건.**
-- E: 1건 — *"N represents the number of defect **types**"* (무관).
-- A: 3건 — 전부 **모델 정확도 차이를 교란으로 인정**한다는 서술이고,
-  **결함 개수·웨이퍼 크기 교란이 아니다.**
-
-**즉 7편 중 「결함 개수」나 「웨이퍼 크기」를 교란 변수로 놓고 통제한 사례가 0이다.**
-
-| 우리가 한 것 | 선행 대응물 |
-|---|---|
-| F3 AUC 0.927 → **개수 통제 후 0.743** (§3-2) | **없음** |
-| `size` 증분 +0.111 중 **84.3%가 F1a·F1b의 반경 정보** (`w4_size.md`) | **없음** |
-| `none` sanity 귀무값 순열 생성 (§3-13) | **없음** |
-
-> ⚠ **이 결론의 한계를 정확히 적는다.** *"선행에 없다"*가 아니라
-> **"내가 읽은 7편에 없다"**이다. 7편은 3~5편 상한을 넘긴 표본이지만
-> 이 분야 전수가 아니다. **「최초」라고 쓰지 않는다.**
-> 쓸 수 있는 것은 **「비교 대상으로 삼은 7편에는 개수·크기 교란 통제가 없었다」**뿐이다.
+**→ 판정: accuracy 헤드라인이 8편 중 6편. 뿌리가 원논문이다. §7의 accuracy 금지 유지.**
 
 ---
 
-## 5. ★ 실제 수확 — **내가 빠뜨린 대조 1건을 찾았다**
+## 4. ③ 교란 통제 — **정정. 「0건」이 아니라 「설계상 정규화는 있고 교란 실측은 없다」다**
 
-이 스캔의 유일한 목적이 이것이었다. **찾았다.**
+### 4-0. ⚠ v1의 판정을 정정한다
 
-### 5-A. 회전·플립 불변성을 **주장만 하고 측정한 적이 없다**
+v1은 *"7편 중 개수·크기 교란 통제 0건"*이라 썼고, **Wu 2015의 밀도 기반 13특징이
+면적 정규화를 하고 있을 가능성**을 미확인 위험으로 달아뒀다.
 
-C(Sci Rep 2023)는 회전·플립 불변성을 **설계로 주장하고 끝내지 않는다.**
-**회전·플립을 가한 unseen test set을 따로 만들어 성능 유지를 측정한다.**
-클래스별로 회전·플립 분산이 다르다는 것까지 보고한다.
+**전제부터 틀렸다. Wu 2015에 밀도 기반 특징은 없다.**
+원논문의 특징은 **Radon 기반 40차원 + 기하 기반 18차원**이고,
+그 조합에 잡음 제거 유무 2벌을 곱해 **(18+40)×2 = 116차원**이다.
+*"13-zone density"*는 **후속 연구·공개 커널에서 붙은 것이지 원논문이 아니다.**
+(`decisions.md:1531`의 「13-zone 밀도 특징」 항목도 이 전제 위에 있다 — 출처를 다시 달아야 한다.)
 
-**우리 쪽 상태** (`grep` 결과):
+### 4-1. 그런데 정규화는 **한다** — 그것도 우리와 같은 방식으로
+
+**기하 특징 (§III-B)**:
+> "**Because the wafer maps vary in size, the attributes must be normalized by dividing
+> appropriate constants**" — (6) 최대 영역 면적 **÷ 웨이퍼 면적**,
+> (7) 둘레 **÷ 웨이퍼 반지름**, (8)(9) 중심까지 최대·최소 거리, (10)(11) 타원 축 비.
+
+**Radon 특징 (§III-A)**:
+> "**To ensure that response G is comparable among wafer maps**, minmax normalization
+> is applied to G" — 식 (5).
+
+**전부 「웨이퍼 내부 기준 대조비」다.** §3-12에서 우리가 도달한 결론
+— *"성공한 특징의 공통점은 전부 웨이퍼 내부 기준 대조비. 절대 통계가 아니다"* —
+**과 같은 설계 원칙이 원논문에 이미 있다.**
+
+> **이건 우리 설계의 외부 확인이다.** 우리는 형상 특징 3종이 기대와 반대로 나온 뒤
+> **면적 정규화로 되살아난 경험**(§3-12, Center 3.24배)에서 그 원칙에 도달했고,
+> 원논문은 처음부터 그렇게 설계했다. **결론이 같다는 것이 요점이다.**
+
+### 4-2. 하지만 **교란 실측은 여전히 0건이다**
+
+**정규화(normalization)와 교란 통제(confound control)는 다른 일이다.**
+§3-13이 *"통제와 제거는 다르다"*로 가른 것과 같은 종류의 구분이다.
+
+| | 원논문 | 우리 |
+|---|---|---|
+| 웨이퍼 크기를 나눠서 제거 | ✅ 설계상 | ✅ |
+| **크기가 성능에 얼마나 실려 있는지 측정** | ❌ | ✅ `w4_size.md` (+0.111 중 **84.3%가 F1a·F1b 중복**) |
+| **결함 개수를 고정하고 재측정** | ❌ | ✅ §3-2 (F3 0.927 → **0.743**) |
+| **귀무값을 순열로 만들어 합격선 검증** | ❌ | ✅ §3-13 (`none` CV 0.828, 귀무 0.830) |
+
+원논문은 다이 개수 분포를 **관찰은 한다** — Fig. 9,
+*"the number of dice **varies considerably**"*. **거기서 멈춘다.**
+그 변동이 분류 성능에 얼마나 실리는지는 묻지 않는다.
+
+**→ 판정: 8편 중 「개수·크기를 교란으로 놓고 측정한」 사례 0건.**
+**정규화까지 포함하면 원논문이 부분적으로 앞선다 — 정규화는 우리 발명이 아니다.**
+**「최초」라고 쓰지 않는다. 쓸 수 있는 것은 「읽은 8편에 교란 실측이 없었다」뿐이다.**
+
+---
+
+## 5. ★ 수확 ① — **회전·플립 불변성을 아무도 측정하지 않았다 (원논문 포함)**
+
+### 5-0. v1보다 판정이 세졌다
+
+v1은 *"우리가 5개 파일에서 주장만 하고 측정 기록이 0건"*이라 썼다.
+**원논문을 읽으니 원논문도 똑같다.** 그리고 **원논문은 그게 논문의 핵심 주장이다.**
+
+**W 초록**:
+> "a set of novel **rotation- and scale-invariant features** is proposed"
+
+**W §III-A** (Radon 특징):
+> "The Rμ and Rσ **appear to be** rotation-invariant and scale-invariant."
+
+**W §III-B** (기하 특징):
+> "the geometry-based features were obtained by calculating the regional, statistical,
+> and linear attributes, **all of which are rotation- and scale-invariant**"
+
+> ***"appear to be"*** — **근거는 Fig. 2(c)(d)의 곡선을 눈으로 본 것이다.**
+> 회전시킨 웨이퍼로 특징값을 다시 계산해 비교한 실험은 **논문에 없다.**
+> 제목과 초록이 내건 성질을 **측정하지 않았다.** 그 논문이 **377회 인용됐다.**
+
+### 5-1. 우리 상태 — 같다
 
 | 위치 | 문장 |
 |---|---|
@@ -171,60 +238,77 @@ C(Sci Rep 2023)는 회전·플립 불변성을 **설계로 주장하고 끝내�
 | `src/shape_feats.py:22` | *"회전 불변만 쓴다"* |
 | `docs/coordinate_alignment.md:48` | *"F3는 이미 회전 불변 지표로 설계했으므로"* |
 
-**5개 파일에서 주장한다. 측정한 기록은 0건이다.**
+**5개 파일에서 주장한다. 측정 기록은 0건이다.**
+**C(Sci Rep 2023)만 회전·플립 test set을 따로 만들어 실측한다** — 8편 중 1편이다.
 
-> **이것이 §3-14가 말한 「안 떠올린 질문」의 실물이다.** 설계상 불변이므로
-> 불변일 것이라고 **가정**했고, 그 가정을 **한 번도 실행으로 확인하지 않았다.**
-> §3-3(*"새 방법은 실패 조건에서 먼저 돌린다"*)을 특징 6종 전체에는 적용하지 않은 것이다.
+### 5-2. 왜 값싼 검사이고, 왜 귀무값이 정확한가
 
-**왜 이게 값싼 검사인가**: 웨이퍼 맵은 다이 격자다. **90°·180°·270° 회전과
-좌우/상하 플립은 격자 정렬이라 리샘플링이 없다** — 보간 오차가 원천적으로 0이다.
-따라서 **귀무값이 정확히 계산된다(§3-13)**:
+웨이퍼 맵은 다이 격자다. **90°·180°·270° 회전과 좌우/상하 플립은 격자 정렬이라
+리샘플링이 없다** — 보간 오차가 원천적으로 0이다. 따라서 §3-13이 요구하는
+**「이 통계량은 귀무 상태에서 정확히 얼마인가」에 답이 있다**:
 
 > **6종 특징값은 8개 이면군(dihedral) 변환 전부에서 부동소수점 오차 내로 동일해야 한다.**
 > 하나라도 어긋나면 **불변성 주장이 틀렸거나 구현에 버그가 있다.**
 > *"직관으로 정한 합격선"*이 아니라 **계산된 귀무값**이다.
 
-**예상 소요 30분~1시간.** §3-3의 상한(30분~2시간) 안이다.
+**예상 30분~1시간.** §3-3의 상한 안이다.
 
-### 5-B. 등급이 낮은 후보 2건 (기록만)
+---
+
+## 6. ★ 수확 ② — **중복 웨이퍼맵을 한 번도 세지 않았다** (v2 신설)
+
+### 6-0. 원논문이 통제한 것은 lot이 아니라 중복이었다
+
+> "there are only **696 599 unique wafer maps**" (전체 811,457 중)
+> "**both training and test sets comprised unique wafer maps**"
+
+**원본의 14.2%가 중복이고, 원저자는 그것을 제거하고 분할했다.**
+
+**우리 쪽 상태** (`grep 중복|duplicat|unique`):
+`docs/`와 `src/`의 「중복」은 **전부 특징 간 상관**(D-010)이다.
+**표본 중복 — 같은 웨이퍼 맵이 두 번 들어있는가 — 을 센 기록은 0건이다.**
+
+### 6-1. lot 그룹 분할이 이걸 덮어주지 않는다
+
+같은 lot 안의 중복은 `StratifiedGroupKFold`가 막는다.
+**하지만 서로 다른 lot에 있는 동일 맵은 그대로 fold를 넘는다.**
+`Near-full`처럼 lot당 1.1장인 클래스에서는 그룹 분할의 보호가 약하다.
+
+**검사**: 8종 라벨 부분집합(25,519장)에서
+① 완전 동일 맵이 몇 쌍인가 ② 그 중 fold를 교차하는 것이 몇 개인가.
+`hash(map.tobytes())` 한 줄이면 끝난다. **10분.**
+
+> **결과가 0이면 그것도 결과다** — D-003의 누수 방어가 중복까지 커버한다는 증거가 된다.
+> **0이 아니면 `w3_*` 성능 수치의 해석에 단서를 달아야 한다.**
+
+---
+
+## 7. 등급이 낮은 후보 (기록만)
 
 - **train set 크기별 성능 곡선** (C가 보고) — 우리는 없다. **등급 중.**
   전이 실험·외부 검증이 이미 있어 우선순위가 밀린다
-- **부분집합 선택의 자의성** — 검색 요약에 *"902장(라벨 0.5%)만 쓴 연구"* 언급이
-  있었으나 **출처가 언론 보도자료라 인용하지 않는다.** 원 논문 미확인
+- **잡음 제거 유무 2벌을 모두 쓰는 설계** (W) — 원논문은 median filter 적용/미적용
+  특징을 **둘 다 넣는다**. *"어느 쪽이 맞는지 모르니 둘 다"*라는 태도다.
+  우리 전처리에 대응물이 없다. **등급 하** — 새 관찰이 아니라 성능 시도다
 
 ---
 
-## 6. 못 읽은 것 — 명시한다
-
-| 대상 | 상태 |
-|---|---|
-| **Wu et al. 2015 (IEEE TSM 28(1):1-12)** — WM-811K 원논문 | ❌ **전문 미확보.** IEEE Xplore가 스크립트 접근을 차단(HTTP 응답이 `<script>`), Semantic Scholar API는 429. **분할 정책·지표를 확인하지 못했다** |
-| PLOS ONE / MDPI / Nature 웹판 | ❌ 403 또는 인증 리다이렉트 |
-
-> **Wu 2015가 남은 가장 큰 공백이다.** 원논문의 밀도 기반 13특징은
-> *"영역별 결함 밀도"*이므로 **면적 정규화를 이미 하고 있을 가능성**이 있고,
-> 그렇다면 §4의 판정(개수 교란 통제 0건)이 **부분적으로 달라진다.**
-> **§4를 「7편 중 0건」으로만 쓰고 「선행에 없다」로 쓰지 않은 이유가 이것이다.**
-> 도서관 프록시로 받을 수 있으면 그때 이 절을 갱신한다.
-
----
-
-## 7. 판정 요약
+## 8. 판정 요약 (v2)
 
 | 질문 | 답 | 우리 대응 |
 |---|---|---|
-| ① lot 단위 분할이 표준인가 | ❌ **7편 중 1편.** 소수파다 | **D-003 유지.** 단 *"표준을 따랐다"*고 쓰지 않는다 |
-| ② accuracy가 주 지표인가 | ⚠ **여전히 다수(7편 중 5편).** per-class 병기는 4편 | **§7 accuracy 금지 유지** |
-| ③ 개수·크기 교란을 통제하는가 | ❌ **7편 중 0건** (Wu 2015 미확인) | **우리 쪽이 더 촘촘하다.** 단 *"최초"* 금지 |
-| ★ 내가 빠뜨린 대조가 있나 | ✅ **있다 — 회전·플립 불변성 실측** | **§5-A. 실행 대상** |
+| ① lot 단위 분할이 표준인가 | ❌ **8편 중 1편.** **원논문도 아니다**(전문가 선별) | **D-003 유지.** *"표준을 따랐다"* 금지. §7 서술 정밀화 |
+| ② accuracy가 주 지표인가 | ⚠ **8편 중 6편.** **뿌리가 원논문(94.63%)이다** | **§7 accuracy 금지 유지** |
+| ③ 개수·크기 교란을 통제하는가 | ⚠ **정규화는 원논문부터 있다.** **교란 실측은 8편 중 0건** | *"최초"* 금지. **정규화는 우리 발명이 아니다** |
+| ★ 빠뜨린 대조가 있나 | ✅ **2건 — 회전·플립 불변성 실측 · 중복 웨이퍼맵 계수** | §5 · §6. **둘 다 실행 대상** |
 
-**초록에 미치는 영향: 0.** 로드맵 v4.5 ④가 정정한 대로다 —
-참고문헌 추가가 물리적으로 불가하고(1건=2페이지), 초록에 신규성 주장이 없다.
-**이 스캔의 결과로 초록의 어떤 문장도 바뀌지 않는다.**
+**초록에 미치는 영향: 0.** 참고문헌 추가가 물리적으로 불가하고(1건=2페이지),
+초록에 신규성 주장이 없다. **이 스캔의 결과로 초록의 어떤 문장도 바뀌지 않는다.**
+
+**포스터에는 재료가 생겼다** — §3-B(원저자도 `Loc` 경계 혼동을 *"두 유형에 걸쳐 있다"*로
+설명) · §4-1(대조비 설계 원칙의 외부 확인) · §5(불변성 미검증이 이 분야의 관행).
 
 ---
 
-*2026-09-10 작성. 소요 약 1시간. 원문 추출 스크립트와 PDF는 스크래치패드에만 두었다
-(리포에 넣지 않음 — 저작권).*
+*v1 2026-09-10 오전 (7편) / **v2 2026-09-10 오후 (원논문 추가, §4·§5·§6 정정)**.
+소요 누계 약 2시간. 원문 추출 스크립트와 PDF는 리포 밖에 둔다 — `.gitignore: docs/*.pdf`.*

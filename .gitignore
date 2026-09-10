@@ -32,3 +32,8 @@ env/
 Thumbs.db
 desktop.ini
 .venv/
+
+# ── 논문 PDF (저작권) ─────────────────────────────────────
+# IEEE·Elsevier 등 구독 기반 전문은 공개 리포에 올리지 않는다.
+# 서지 정보와 인용문만 docs/*.md에 남긴다.
+docs/*.pdf
