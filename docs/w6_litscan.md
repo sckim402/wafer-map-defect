@@ -326,5 +326,70 @@ v1은 *"우리가 5개 파일에서 주장만 하고 측정 기록이 0건"*이�
 
 ---
 
+---
+
+## 9. 출처와 접근 — **재현하려면 이게 필요하다**
+
+v1의 「못 읽은 것」 절은 v2에서 사라졌다(원논문을 받았으므로).
+**하지만 접근 조건 자체는 기록으로 남겨야 한다** — 다음 사람이 같은 벽에 부딪힌다.
+
+### 9-A. 입수 경로
+
+| 논문 | 경로 |
+|---|---|
+| A·B·D·E·F·G (arXiv 6편) | `curl https://arxiv.org/pdf/<id>` — **무인증, 즉시** |
+| C (Sci Rep) | `https://www.nature.com/articles/s41598-023-34147-2.pdf` — 웹 뷰는 인증 리다이렉트, **`.pdf` 직링크는 열린다** |
+| **W (Wu 2015, IEEE TSM)** | ⛔ **스크립트로 못 받는다.** **사용자가 기관 접근으로 받아 `docs/`에 넣었다** |
+
+**Wu 2015 접근 실패 실측 (2026-09-10)**
+
+- `ieeexplore.ieee.org/iel7/66/7027932/06932449.pdf` → **본문이 `<script>`**(17KB). 봇 차단
+- Unpaywall (`api.unpaywall.org/v2/10.1109/TSM.2014.2364237`) → **`is_oa: false`**
+- Semantic Scholar → **`openAccessPdf: {status: "CLOSED"}`**
+- Semantic Scholar 검색 API → **HTTP 429** (무키 호출 제한)
+
+> **합법적인 공개 사본이 없다. 기관 구독이 유일한 경로다.**
+> 받은 PDF에는 *"Authorized licensed use limited to: Chungnam National University"*가
+> 찍혀 있다. **`.gitignore`에 `docs/*.pdf`를 넣어 리포에 올라가지 않게 했다.**
+
+### 9-B. 서지 확정은 Crossref로 했다 (무인증)
+
+```
+curl -s https://api.crossref.org/works/10.1109/TSM.2014.2364237
+→ IEEE Trans. Semicond. Manuf. 28(1):1-12, 2015-02, 피인용 342(Crossref)/377(S2)
+```
+
+**검색 결과에 적힌 권·호·페이지를 그대로 믿지 않고 DOI로 확정했다.**
+
+### 9-C. ⚠ 본문 추출 — **요약 API를 쓰지 않았다**
+
+두 번 데였다.
+
+1. **웹 검색 요약이 여러 논문을 한 문단에 섞었다.** *"lot-group split을 쓴다"*를
+   출처 없이 서술했는데 **실제로는 8편 중 1편에만 있는 문장**이었다.
+   그대로 인용했으면 **§2의 판정이 정반대**가 됐다
+2. **PDF 요약 도구가 arXiv PDF를 못 읽었다.** *"corrupted or improperly encoded
+   PDF stream"* / *"content appears incomplete"*를 반환하고,
+   **그러면서도 그럴듯한 답을 지어냈다**
+
+**→ 내려받아 로컬에서 전문을 뽑았다.**
+
+```python
+import pymupdf, re
+t = "\n".join(p.get_text() for p in pymupdf.open(path))
+# 방법론 절만: split|lot|stratif|leak|fold / macro-F1|per-class|balanced accuracy
+#              defect density|number of defect|die count|wafer size|confound
+# 히트 전후 160자 -> 걸린 문단은 통째로 다시 읽는다
+```
+
+- **콘솔이 깨지면 `PYTHONIOENCODING=utf-8`** (cp949 기본값 — CLAUDE.md §7과 같은 함정)
+- 추출 스크립트와 PDF는 **스크래치패드에만** 두었다 (저작권)
+
+> **이 절의 요점**: *"요약을 읽고 논문을 읽었다고 하지 않는다."*
+> §0에 *"원문을 읽었다"*고 쓴 것의 실제 내용이 이것이다.
+
+
+---
+
 *v1 2026-09-10 오전 (7편) / **v2 2026-09-10 오후 (원논문 추가, §4·§5·§6 정정)**.
 소요 누계 약 2시간. 원문 추출 스크립트와 PDF는 리포 밖에 둔다 — `.gitignore: docs/*.pdf`.*
