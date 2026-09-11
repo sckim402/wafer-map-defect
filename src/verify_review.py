@@ -53,6 +53,39 @@ def verify(result_path, kit):
     print(f"검토자 {who.get('model','?')} / {who.get('date','?')}")
     print(f"연 파일 {len(r.get('files_read', []))}개\n")
 
+    # ── 2차 스키마(설계 검토): design_flaws는 근거 인용만 대조한다 ──
+    if "design_flaws" in r and "overstatements" not in r:
+        rows, kept = [], 0
+        for it in r["design_flaws"]:
+            ef = it.get("evidence_file", "")
+            eb = body(ef) if ef else None
+            e = "파일없음" if (ef and eb is None) else (
+                find(it.get("evidence_quote", ""), eb) if eb is not None else "MISS(미기재)")
+            ok = e in ("exact", "norm")
+            kept += ok
+            rows.append((it.get("id", "?"), it.get("item", "?"), it.get("aspect", "?"),
+                         it.get("severity", "?"), e, ok, (it.get("problem", "") or "")[:38], ef))
+        print(f"  {'id':<4}{'건':<4}{'측면':<12}{'등급':<8}{'근거':<10}{'판정':<6}지적")
+        print("  " + "-" * 80)
+        for i, item, asp, sev, e, ok, prob, ef in rows:
+            print(f"  {str(i):<4}{str(item):<4}{asp:<12}{sev:<8}{e:<10}{'OK' if ok else 'BUY':<6}{prob}")
+            if not ok:
+                print(f"       ^ 버린다 ({ef or '근거파일 미기재'})")
+        n = len(rows)
+        print("")
+        print(f"  설계 지적 {n}건 중 근거 검증 통과 {kept}건 / 폐기 {n - kept}건")
+        if n and kept == 0:
+            print("  ** 전부 MISS — 파일을 읽지 않았다. 결과 전체를 폐기한다 **")
+        ex = r.get("executed", [])
+        print(f"  실제 실행 {len(ex)}건 / 빠진 대조군 {len(r.get('missing_controls', []))}건 "
+              f"/ 답 못하는 질문 {len(r.get('unanswerable', []))}건")
+        for e_ in ex:
+            print(f"    [건{e_.get('item','?')}] {str(e_.get('result',''))[:70]}")
+        fq = r.get("first_question")
+        if fq:
+            print(f"  첫 질문: {fq}")
+        return kept, n
+
     rows, kept = [], 0
     tgt = body(TARGET)
     if tgt is None:
