@@ -53,6 +53,49 @@ def verify(result_path, kit):
     print(f"검토자 {who.get('model','?')} / {who.get('date','?')}")
     print(f"연 파일 {len(r.get('files_read', []))}개\n")
 
+    # ── 3차 스키마(구현 전수 조사): 인용 + **재현 코드**를 함께 요구한다 ──
+    if "degeneracies" in r:
+        rows, kept = [], 0
+        for it in r["degeneracies"]:
+            ef = it.get("evidence_file", "")
+            eb = body(ef) if ef else None
+            q = "파일없음" if (ef and eb is None) else (
+                find(it.get("code_quote", ""), eb) if eb is not None else "MISS(미기재)")
+            has_repro = bool((it.get("repro_code") or "").strip())
+            has_obs = bool((it.get("observed") or "").strip())
+            ok = q in ("exact", "norm") and has_repro and has_obs
+            kept += ok
+            rows.append((it.get("id", "?"), it.get("kind", "?"), it.get("severity", "?"),
+                         q, has_repro, has_obs, ok, ef,
+                         (it.get("symptom", "") or "")[:34]))
+        print(f"  {'id':<4}{'종류':<11}{'등급':<8}{'인용':<10}{'재현코드':<9}{'관찰값':<8}{'판정':<6}증상")
+        print("  " + "-" * 88)
+        for i, kind, sev, q, hr, ho, ok, ef, sym in rows:
+            print(f"  {str(i):<4}{kind:<11}{sev:<8}{q:<10}{'있음' if hr else '없음':<9}"
+                  f"{'있음' if ho else '없음':<8}{'OK' if ok else 'BUY':<6}{sym}")
+            if not ok:
+                why = []
+                if q not in ("exact", "norm"): why.append("인용 " + q)
+                if not hr: why.append("재현 코드 없음")
+                if not ho: why.append("관찰값 없음")
+                print(f"       ^ 버린다 ({', '.join(why)}) {ef}")
+        n = len(rows)
+        print("")
+        print(f"  결함 {n}건 중 검증 통과 {kept}건 / 폐기 {n - kept}건")
+        cc = r.get("checked_but_clean", [])
+        print(f"  안 걸렸다고 보고한 파일 {len(cc)}개 / 계열 밖 지적 {len(r.get('out_of_class', []))}건")
+        if not cc:
+            print("  ** checked_but_clean이 비었다 — 커버리지를 알 수 없으므로 "
+                  "「결함 0건」을 근거로 쓰지 않는다 **")
+        else:
+            src_n = len([f for f in (kit / "src").glob("*.py")]) if (kit / "src").is_dir() else 0
+            seen = len({c.get("file", "") for c in cc})
+            print(f"     -> src 전체 {src_n}개 중 {seen}개에 대해 확인 근거가 있다")
+        fq = r.get("first_question")
+        if fq:
+            print(f"  첫 질문: {fq}")
+        return kept, n
+
     # ── 2차 스키마(설계 검토): design_flaws는 근거 인용만 대조한다 ──
     if "design_flaws" in r and "overstatements" not in r:
         rows, kept = [], 0
