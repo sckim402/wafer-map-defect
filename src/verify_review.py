@@ -53,6 +53,55 @@ def verify(result_path, kit):
     print(f"검토자 {who.get('model','?')} / {who.get('date','?')}")
     print(f"연 파일 {len(r.get('files_read', []))}개\n")
 
+    # ── 4차 스키마(공정 물리): 인용 + **예측·반증이 서로 달라야** 통과 ──
+    if "attributions" in r:
+        doc = "docs/pattern_process_mapping.md"
+        db = body(doc)
+        if db is None:
+            raise SystemExit(f"[중단] {kit/doc} 없음")
+        rows, kept, mem = [], 0, 0
+        for a in r["attributions"]:
+            q = find(a.get("doc_quote", ""), db)
+            tp = (a.get("testable_prediction") or "").strip()
+            fl = (a.get("falsifier") or "").strip()
+            pair_ok = bool(tp) and bool(fl) and norm(tp) != norm(fl)
+            st = a.get("source_type", "?")
+            mem += (st == "기억")
+            ok = q in ("exact", "norm") and pair_ok
+            kept += ok
+            rows.append((a.get("id", "?"), a.get("pattern", "?"), a.get("verdict", "?"),
+                         st, q, pair_ok, a.get("computable_now"), ok,
+                         (a.get("assessment", "") or "")[:30]))
+        print(f"  {'id':<4}{'패턴':<12}{'판정':<7}{'출처':<7}{'인용':<10}"
+              f"{'예측≠반증':<10}{'계산가능':<9}{'판정':<6}평가")
+        print("  " + "-" * 94)
+        for i, pat, vd, st, q, pk, cn, ok, asm in rows:
+            print(f"  {str(i):<4}{pat:<12}{vd:<7}{st:<7}{q:<10}"
+                  f"{'O' if pk else 'X':<10}{str(cn):<9}{'OK' if ok else 'BUY':<6}{asm}")
+            if not ok:
+                why = ([] if q in ("exact", "norm") else ["인용 " + q]) +                       ([] if pk else ["예측/반증이 없거나 동일"])
+                print(f"       ^ 버린다 ({', '.join(why)})")
+        n = len(rows)
+        print("")
+        print(f"  귀속 {n}건 중 검증 통과 {kept}건 / 폐기 {n - kept}건")
+        print(f"  출처 구분: 기억 {mem}건 / 논문·교재 {n - mem}건  "
+              f"<- 논문·교재는 DOI·서지를 직접 확인할 것")
+        for key, lab in (("missing_causes", "빠진 원인"),
+                         ("physically_confusable", "물리적으로 겹치는 쌍"),
+                         ("what_the_images_show", "그림 관찰")):
+            v = r.get(key, [])
+            print(f"  {lab} {len(v)}건")
+            for e in v[:4]:
+                head = e.get("pattern") or e.get("pair") or "?"
+                body_ = e.get("cause") or e.get("why") or e.get("observation") or ""
+                print(f"    [{head}] {str(body_)[:64]}")
+        cn_ok = sum(1 for a in r["attributions"] if a.get("computable_now"))
+        print(f"  지금 우리 데이터로 잴 수 있는 예측 {cn_ok}/{n}건")
+        fq = r.get("first_question")
+        if fq:
+            print(f"  첫 질문: {fq}")
+        return kept, n
+
     # ── 3차 스키마(구현 전수 조사): 인용 + **재현 코드**를 함께 요구한다 ──
     if "degeneracies" in r:
         rows, kept = [], 0
