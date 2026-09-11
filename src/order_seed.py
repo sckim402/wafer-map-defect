@@ -70,15 +70,26 @@ def main():
         stable, per_P = True, []
         for P in Ps:
             a, b = pr[frozenset(P) | {X}], pr[frozenset(P)]
-            wins = []
+            wins, marg, neg = [], [], False
             for s in range(n_seed):
                 dec = {k: b[s][k] - a[s][k] for k in a[s]}
-                wins.append(max(dec, key=dec.get))
+                # 부호와 1·2위 차를 함께 낸다. max()만 쓰면 28쌍이 전부 동점이거나
+                # 전부 악화여도 사전식 첫 쌍(Center↔Donut)을 승자로 내놓는다.
+                # (2026-09-11 외부 검토 #9가 합성 귀무로 재현했다)
+                srt = sorted(dec.items(), key=lambda kv: -kv[1])
+                wins.append(srt[0][0])
+                marg.append(srt[0][1] - srt[1][1])
+                neg |= srt[0][1] <= 0
             ok = len(set(wins)) == 1
             stable &= ok
             per_P.append(wins[0] if ok else None)
             cells = "".join(f"{w[0]}↔{w[1]}".ljust(26) for w in wins)
-            print(f"    {'+'.join(P):<8}{cells}{'✅' if ok else '❌ 갈림'}")
+            flag = "❌ 감소량 ≤ 0" if neg else (
+                "⚠ 마진 < 0.01" if min(marg) < 0.01 else ("✅" if ok else "❌ 갈림"))
+            print(f"    {'+'.join(P):<8}{cells}{flag}")
+            print(f"    {'':<8}1·2위 차 " + " / ".join(f"{m:.4f}" for m in marg) +
+                  ("   <- 잡음 대역 ±0.01 안이다. 승자 이름을 확정하지 않는다"
+                   if min(marg) < 0.01 else ""))
         if not stable:
             verdict[X] = "판정 불가"
         else:

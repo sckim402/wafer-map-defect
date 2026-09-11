@@ -1,0 +1,263 @@
+{
+  "reviewer": {
+    "model": "GPT-6 (Codex)",
+    "date": "2026-09-11"
+  },
+  "design_flaws": [
+    {
+      "id": 1,
+      "item": 1,
+      "aspect": "other",
+      "problem": "von Mises라는 커널 이름만으로는 새 특징이 정의되지 않아, 구현자가 기하 보정과 결함 분포 보정 중 서로 다른 것을 계산할 수 있습니다.",
+      "fix": "라벨을 보기 전에 식을 고정하십시오. 검토용 구현은 B=중심점(r=0)을 제외한 유효 밴드 die 전체, gκ(θi)=|B|⁻¹Σj∈B exp[κ(cos(θi−θj)−1)], wi=1/gκ(θi), CVκ=1−|Σ불량 wi exp(iθi)|/Σ불량 wi입니다. 자기 항 포함, 타원 정규화 좌표, 중심점 제외 후 MIN_FAIL=12, 부족 시 NaN까지 고정했습니다. 불량 die만으로 gκ를 만들면 보정 대상에 결함 패턴 자체가 섞입니다. κ별로 가중치가 달라져 유한 격자에서 기존 특징과 다른 양이 됩니다. 첫 원형 모멘트의 산포라는 형식은 유지되지만, 일반적인 균일성이나 모든 형태의 흩어짐을 측정하는 것은 아닙니다. 커널 식 출처: [SciPy 공식 정의](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.vonmises.html); 위 가중치 설계와 해석은 검토자의 도출입니다.",
+      "evidence_file": "src/edge_band.py",
+      "evidence_quote": "가중치는 1/(그 방위각 구간의 밴드 die 수) — 격자 기하 위장을 상쇄한다.",
+      "severity": "high"
+    },
+    {
+      "id": 2,
+      "item": 1,
+      "aspect": "pass_line",
+      "problem": "κ 곡선을 전량 보고한다는 약속만으로는 재측정에 사용할 κ와 결론을 선택하는 규칙이 고정되지 않습니다.",
+      "fix": "현재 자료에는 특정 각도 폭을 공정 물리와 연결할 길이·die pitch·공정 기전 정보가 없으므로 물리적으로 유일한 κ를 정할 수 없습니다. 각도 반치폭 h를 독립적인 기하 또는 공정 근거로 먼저 정할 수 있다면 κ=ln(2)/(1−cos h)로 변환할 수 있습니다(커널 식에서 직접 도출). 격자 해상도 기준은 기하적 수치 설계이지 공정 물리의 검증은 아닙니다. 근거가 없으면 유일값을 채택하지 말고 미리 고정한 범위 전체의 민감도로 보고하십시오. 범위, 간격, 맵별 κ 사용 여부, κ=0 대조, 범위 안 판정이 갈릴 때 'κ 의존/미확정'으로 남길 규칙을 실행 전에 고정해야 합니다. 이번 0·1·4·16·64는 구현 검토용 탐침이며 최적값 선정이나 사전 등록을 대신하지 않습니다.",
+      "evidence_file": "docs/w6_checks.md",
+      "evidence_quote": "**§3-9대로, 성능을 보고 고를 일이 아니다.**",
+      "severity": "medium"
+    },
+    {
+      "id": 3,
+      "item": 1,
+      "aspect": "control",
+      "problem": "새 커널에서 E의 판정이 바뀌어도, 그 변화만으로 기존 순서 의존성이 bin 경계 아티팩트 때문이라고 특정할 수 없습니다.",
+      "fix": "회전 오차 제거와 가중 방식 변경을 분리하십시오. 원판에서 맵별 D4 방향을 바꾸어 circ_var만 다시 계산하고 다른 5개 특징·fold·RF 설정·열 순서를 그대로 둔 대조가 먼저 필요합니다. cc_compact도 회전에 취약하므로 맵 전체를 바꾼 뒤 6종을 모두 재계산하면 교란됩니다. 동일한 변환 배정을 모든 부분집합에 공유하고 여러 배정에서 28쌍 감소량과 판정을 보고하십시오. 새 커널, κ=0 무가중, CV 제외도 함께 비교하되 CV 제외는 특징 수와 RF의 기본 max_features까지 달라지는 절제임을 명시하십시오. 커널 교체만으로 판정이 바뀌면 '특징 정의에 민감하다', 원판의 방향만 바꾸어 판정이 바뀌면 '좌표 방향 아티팩트가 판정에 영향을 준다'까지 구분해 쓸 수 있습니다.",
+      "evidence_file": "docs/w6_checks.md",
+      "evidence_quote": "그건 패치가 아니라 **지표 재정의**다 (D-005·D-011 재개).",
+      "severity": "high"
+    },
+    {
+      "id": 4,
+      "item": 1,
+      "aspect": "null_value",
+      "problem": "D4 차이의 이론값 0은 계산됐지만, 그것만으로 새 가중 CV의 유한 표본 귀무분포나 산포 해석이 검증되지는 않습니다.",
+      "fix": "불변성 검사는 유지하되 통계적 산포 검사와 구분하십시오. 수학적 D4 차이는 0이고 1e-9는 부동소수점 허용 오차입니다. NaN 일치, 중심점, 값 0 근처의 절대오차 규칙도 고정해야 합니다. 새 가중치마다 실제 밴드 기하·불량 개수를 고정하고 불량 위치만 비복원 무작위 배정하여 귀무분포를 만드십시오. 귀무 평균을 1로 두거나 기존 0.886/√n_eff 근사를 모든 기하에 정확식처럼 적용하면 안 됩니다. 검토용 31×31 격자에서 κ=16의 귀무 평균은 n=12/20/60에 따라 0.755/0.813/0.917이었습니다. 균등한 36방향과 서로 반대인 두 방향도 모두 CV≈1이므로, 통과 후 의미는 '가중 첫 원형 모멘트의 산포'로 제한해야 합니다. 귀무를 빼서 새 특징으로 채택하라는 제안은 아닙니다.",
+      "evidence_file": "docs/w4_none_sanity.md",
+      "evidence_quote": "**순열** (기하·n 고정, 불량 위치만 무작위)",
+      "severity": "medium"
+    },
+    {
+      "id": 5,
+      "item": 2,
+      "aspect": "pass_line",
+      "problem": "네 갈래는 전체 전이를 분할하지 못하며, ②>③은 상호 혼동 감소가 정답 개선이라는 판정의 충분조건이 아닙니다.",
+      "fix": "진짜 클래스별로 C=정답, P=상대 클래스 오답, O=그 밖의 오답을 두고 이전 상태×이후 상태 3×3 전부를 세십시오. N은 진짜 Center·Loc 표본 수입니다. 상호 혼동 감소=(P→C+P→O−C→P−O→P)/N, 전체 정답 순증=(P→C+O→C−C→P−C→O)/N입니다. 혼동 감소는 a=(P→C−C→P)/N과 b=(P→O−O→P)/N으로 정확히 분해됩니다. ②에는 이 쌍의 혼동과 무관한 O→C도 들어가고, 제안 기준은 정답 손실을 무시합니다. 합성 전이표 [[10,0,30],[8,10,5],[10,0,27]]에서는 ②=18>③=5인데 정답은 12개 줄고 상호 혼동은 13개 줄었습니다. 단일 합격선보다 a·b·정답 순증과 두 클래스별 precision/recall/F1을 함께 보고하십시오. '주로 정답 전환'이라는 표현은 직접 이탈 중 P→C와 P→O의 비중, 유입을 뺀 순분해를 함께 제시할 때만 쓰십시오.",
+      "evidence_file": "docs/reproduction.md",
+      "evidence_quote": "**혼동 쌍(상호 오분류율)** = `(M[i,j] + M[j,i]) / (M[i].sum() + M[j].sum())`.",
+      "severity": "high"
+    },
+    {
+      "id": 6,
+      "item": 2,
+      "aspect": "scope",
+      "problem": "E→E+R의 전이만으로는 세 선행 집합 모두에서 반경 특징의 효과가 정답 전환이라고 확인할 수 없습니다.",
+      "fix": "이 비교의 결론은 E 선행으로 제한하십시오. '세 선행 집합 모두'를 유지하려면 S→R+S와 E+S→E+R+S에서도 같은 표본의 3×3 전이가 필요합니다. 제공 OOF에는 그중 S·R+S·E+S 예측이 없습니다. features.csv로 추가 학습은 가능하지만, 원본 정밀도 캐시와 내보낸 CSV의 차이 및 기존 OOF 재현을 먼저 확인하고 3 seed·같은 fold·같은 열 순서로 예측을 생성해야 합니다. per-class F1 개선은 주변 성능의 개선을 보여주며 기존 상호 오분류 표본의 이동 경로를 특정하지는 못합니다. 이번 실측에서 두 클래스 모두 F1과 정답 수가 증가했지만 그 확인도 E 선행에 해당합니다.",
+      "evidence_file": "docs/method_overview.md",
+      "evidence_quote": "*\"반경 대조비를 더하면 `Center↔Loc`이 풀린다\"*는 **3개 선행 집합 전부**에서",
+      "severity": "medium"
+    },
+    {
+      "id": 7,
+      "item": 3,
+      "aspect": "null_value",
+      "problem": "전체 정답 라벨 순열은 특징과 라벨의 연관성을 없애는 귀무이며, 선행 집합에 따른 최대 감소 쌍의 동일성 귀무와 다릅니다.",
+      "fix": "먼저 질문을 고정하십시오. 전체 라벨을 순열해도 전체 클래스 수와 사전확률은 정확히 보존됩니다. 깨지는 것은 특징·lot·기존 예측과 라벨의 대응이고, 클래스 안에서 라벨만 섞으면 변화가 0입니다. 따라서 둘 다 현재 질문의 자동 정답이 아닙니다. 라벨과 예측의 대응만 섞고 기존 모델을 유지하면 학습 절차의 귀무도 아닙니다. Ojala·Garriga의 라벨 순열은 클래스 구조 검정이고, 클래스 내 '특징' 순열은 특징 의존성 검정입니다. [원논문](https://www.jmlr.org/papers/v11/ojala10a.html). 후자를 계열 블록 순열로 바꾸더라도 계열 내 구조·lot 의존성의 교환가능성을 따로 정당화해야 하며, 공통 최대 감소 쌍의 귀무와 같아지지는 않습니다. 현 질문에는 임의 순열을 선택하지 말고 항목 10의 감소량·승자 불확실성을 직접 평가하십시오.",
+      "evidence_file": "src/order_seed.py",
+      "evidence_quote": "dec = {k: b[s][k] - a[s][k] for k in a[s]}",
+      "severity": "high"
+    },
+    {
+      "id": 8,
+      "item": 3,
+      "aspect": "scope",
+      "problem": "세 선행 집합은 독립 반복이 아니며, argmax 이름이 세 seed에서 같다는 사실은 측정 변동이 0이라는 뜻도 아닙니다.",
+      "fix": "표현을 '같은 데이터·겹치는 특징 집합에서 평가한 세 선행 조건'으로 바꾸십시오. seed는 같은 25,519장의 fold 배정을 바꾸며 RF random_state는 계속 0입니다. 조건들은 표본·모델·부분집합을 공유하므로 독립 시행 3회나 독립 균등한 28지선다로 계산할 수 없습니다. 실제 E→E+R의 Center↔Loc 감소량은 seed별 0.124255, 0.121085, 0.126918로 다릅니다. '승자 이름의 일치'와 '수치의 무변동'을 분리하고 같은 lot 재표집을 모든 seed·부분집합에 공동 적용하십시오.",
+      "evidence_file": "docs/method_overview.md",
+      "evidence_quote": "독립 조건은 9가 아니라 3",
+      "severity": "high"
+    },
+    {
+      "id": 9,
+      "item": 3,
+      "aspect": "pass_line",
+      "problem": "현재 단일 argmax는 28쌍이 전부 동점이거나 모두 악화돼도 한 쌍을 '가장 크게 푸는 쌍'으로 내놓습니다.",
+      "fix": "최대 감소량의 부호, 1·2위 차이, 동점 후보 집합을 함께 반환하십시오. 정확 동점은 모두 보존하고, 작은 양의 차이는 독립적으로 정당화된 오차 평가 없이 자동으로 확정하거나 불일치로 처리하지 마십시오. 합성 귀무에서 28개 감소량을 전부 0으로 놓으면 현 max 코드는 모든 선행에서 Center↔Donut을 골라 3/3 일치를 만듭니다. 모든 감소량이 음수인 반례에서도 승자를 반환합니다. 순열마다 이를 그대로 세면 귀무 일치율에 사전식 순서와 동점 처리 방식이 섞입니다. 감소량의 양성 여부와 순위 판정 가능 여부를 분리하고, 동점/불확실은 별도 결과로 남기십시오.",
+      "evidence_file": "src/order_seed.py",
+      "evidence_quote": "wins.append(max(dec, key=dec.get))",
+      "severity": "high"
+    },
+    {
+      "id": 10,
+      "item": 3,
+      "aspect": "pass_line",
+      "problem": "귀무 일치율과 구분되는지 여부만으로는 '순서 무관'과 '순서 의존'을 대칭적으로 확정할 수 없습니다.",
+      "fix": "이미 정의한 데이터·RF·선행 3개에서 승자 이름을 열거하는 기술적 주장은 순열 p값 없이도 관찰로 보고할 수 있습니다. 새 lot에 일반화하려면 Δ(X,P,q)=r(P,q)−r(P∪X,q)를 28쌍 전부 저장하고, 같은 lot 재표집에서 조건·seed를 함께 움직여 순위 간격의 공동 불확실성을 구하십시오. R의 엄격한 공통 승자를 주장하려면 각 선행에서 Center↔Loc 감소가 양수이며 다른 27쌍보다 크다는 근거가 필요합니다. E/S는 신뢰 가능한 승자 후보 집합의 공통 교집합이 없는지 평가할 수 있습니다. 후보가 겹치거나 경계에 걸리면 미확정입니다. 효과 크기의 선행 불변성까지 묻는다면 별도 동등성 범위가 필요하며 공통 argmax와 다른 질문입니다. '유의하지 않음'을 동일성 증명으로 쓰지 마십시오. 신뢰수준, 다중 비교 범위, 재표집 수·난수·seed 집계법·중단 규칙을 결과 확인 전에 고정하십시오.",
+      "evidence_file": "src/order_seed.py",
+      "evidence_quote": "verdict[X] = \"ⓑ 순서 무관\" if len(set(per_P)) == 1 else \"ⓐ 순서 의존\"",
+      "severity": "high"
+    },
+    {
+      "id": 11,
+      "item": 3,
+      "aspect": "control",
+      "problem": "lot 분할을 유지한다는 조건만으로 행 단위 순열이나 모델별 독립 재표집이 타당해지지는 않습니다.",
+      "fix": "lot 크기가 다르고 일부 lot이 여러 클래스에 걸치므로 행을 독립 표본으로 취급하거나 클래스별로 lot을 따로 섞지 마십시오. 현재 OOF의 불확실성을 탐색할 때는 lot 하나의 모든 행과 모든 모델·seed 예측을 하나의 블록으로 함께 재표집하십시오. 이번 ② 탐침은 두 클래스가 존재하는 3,873개 lot의 paired bootstrap이며 고정된 OOF 조건부 민감도만 평가했습니다. 학습 데이터 변동·겹치는 CV 학습집합의 영향을 포함한 검증에는 전체 학습 절차의 재실행 또는 새 lot 평가가 더 필요합니다. 블록 라벨 순열도 크기·클래스 구성·조건부 분포의 교환가능성을 입증하기 전에는 정확 검정이라고 부를 수 없습니다.",
+      "evidence_file": "docs/method_overview.md",
+      "evidence_quote": "패턴 8종만 보면 1,780/8,047(22.1%)",
+      "severity": "medium"
+    }
+  ],
+  "executed": [
+    {
+      "item": 2,
+      "what_i_ran": "실행 환경·데이터 정합성 및 저장된 세 단계 OOF 성능 재집계",
+      "code": "import runpy\nrunpy.run_path(r\"C:/Users/sc300/Projects/project_wafer_map/ai_review_kit_2차/review_checks.py\", run_name=\"__main__\")\n# 결과: 같은 폴더 review_measurements.json\n# integrity, transitions.macro_mean",
+      "result": "sklearn 1.7.2. features와 OOF 모두 25,519행, idx 유일·행/라벨 일치. 8,047 lot에서 각 seed의 fold 교차 0. 원시 맵 480장의 idx/cls 일치. 원판 CV 재계산과 CSV의 최대 절대차 4.9987e-9, NaN 패턴 일치. OOF macro-F1 3 seed 평균은 E 0.581263190 / E+R 0.767752071 / E+R+S 0.836789230.",
+      "caveat": "모델을 다시 학습한 것이 아니라 제공된 OOF를 재집계했습니다. E는 셋째 자리에서 0.581로, 방법 개요 표의 0.582와 다릅니다(w5_order.md의 0.581과는 일치). 새 실험의 기준선을 저장 OOF 값으로 명확히 지정해야 합니다. CSV의 수치 정밀도가 원시 캐시와 완전히 같은지도 재학습 전에 확인해야 합니다."
+    },
+    {
+      "item": 2,
+      "what_i_ran": "Center·Loc 7,887장에 대한 E→E+R 3×3 전이 및 두 클래스별 precision/recall/F1 재계산",
+      "code": "import runpy\nrunpy.run_path(r\"C:/Users/sc300/Projects/project_wafer_map/ai_review_kit_2차/review_checks.py\", run_name=\"__main__\")\n# 결과: 같은 폴더 review_measurements.json\n# transitions.seeds; 행=이전, 열=이후, 순서 C/P/O",
+      "result": "seed 0/1/2의 P→C는 1017/984/1021, P→O는 270/270/275, C→P는 163/155/158, O→P는 144/144/137입니다. 따라서 상호 혼동 순감소는 980/955/1001장, 그중 정답 방향의 순전이는 854/829/863장, 제3클래스 방향 순전이는 126/126/138장입니다. 전체 정답 순증은 1837/1732/1805장입니다. 두 클래스 각각에서도 정답이 증가합니다(Center +1386/+1349/+1396, Loc +451/+383/+409). Center F1은 0.59597~0.60374→0.90071~0.90313, Loc은 0.49119~0.50634→0.64490~0.64736입니다. 이 E 선행에서는 혼동 감소가 오류 이동만으로 만들어진 것이 아니며, 순감소의 약 86~87%가 정답 방향 순전이입니다. 모든 원시 전이표와 seed별 지표를 review_measurements.json에 저장했습니다.",
+      "caveat": "동일한 7,887장을 seed별로 다시 평가한 것이므로 23,661개의 독립 사례가 아닙니다. R의 나머지 두 선행은 검증하지 않았습니다. 합산 혼동 감소에서 정답 전환 비중은 Center 약 98~99%, Loc 약 65~67%로 다르므로 두 클래스를 합친 수치만으로 둘의 개선 방식을 같다고 쓰면 안 됩니다."
+    },
+    {
+      "item": 2,
+      "what_i_ran": "제안된 ②>③ 판정의 합성 반례와 전이 항등식 확인",
+      "code": "import runpy\nrunpy.run_path(r\"C:/Users/sc300/Projects/project_wafer_map/ai_review_kit_2차/review_checks.py\", run_name=\"__main__\")\n# 결과: 같은 폴더 review_measurements.json\n# synthetic.criterion_counterexample, synthetic.transition_matrix",
+      "result": "C/P/O 순서의 전이표 [[10,0,30],[8,10,5],[10,0,27]], N=100: 오답→정답 18 > 상대오답→제3오답 5라 제안 기준은 통과하지만 전체 정답은 12개 감소합니다. 상호 혼동은 동시에 13개 감소합니다. 실제 데이터 3 seed에서도 3×3 식으로 계산한 순감소와 기존 상호 오분류율 차이가 일치함을 assertion으로 확인했습니다.",
+      "caveat": "합성 반례는 판정 규칙의 충분조건을 반박합니다. 실제 E→E+R에서는 정답 순증이 양수였으므로 실제 효과까지 부정하는 반례는 아닙니다."
+    },
+    {
+      "item": 2,
+      "what_i_ran": "고정 OOF에 대한 lot 단위 paired bootstrap 탐침",
+      "code": "import runpy\nrunpy.run_path(r\"C:/Users/sc300/Projects/project_wafer_map/ai_review_kit_2차/review_checks.py\", run_name=\"__main__\")\n# 결과: 같은 폴더 review_measurements.json\n# lot_bootstrap",
+      "result": "Center/Loc 표본이 존재하는 3,873 lot을 999회 복원 추출했습니다(난수 20260911). 매 추출에서 모든 seed를 함께 유지하고 seed 평균을 계산했습니다. 상호 혼동 감소 0.124086의 95% percentile 구간은 [0.113866,0.134568], 두 클래스 정답률 순증 0.227125는 [0.213226,0.241014], (P→C−P→O)/N 0.093276은 [0.084408,0.102478]입니다.",
+      "caveat": "검토자가 정한 탐색용 민감도 계산입니다. 원래 사전 등록된 합격선이나 정확한 순열 검정이 아닙니다. 학습을 다시 하지 않아 CV 학습집합의 중첩과 모델 학습 변동을 모두 반영하는 일반화 신뢰구간으로 해석할 수 없습니다."
+    },
+    {
+      "item": 1,
+      "what_i_ran": "연속 가중 CV의 합성 실패 조건 검사 및 480장×D4×κ 5개 불변성 탐침",
+      "code": "import runpy\nrunpy.run_path(r\"C:/Users/sc300/Projects/project_wafer_map/ai_review_kit_2차/review_checks.py\", run_name=\"__main__\")\n# 결과: 같은 폴더 review_measurements.json\n# synthetic.kernel_synthetic_max_abs, kernel_probe.results",
+      "result": "먼저 빈 맵, 중심을 포함한 1×13 선형 맵, 7×9 대칭 맵을 검사했습니다. 이후 κ=0/1/4/16/64 전부 480장에 8가지 D4 변환을 적용했습니다. 각 κ에서 유한값 470장, NaN 10장, 변환에 따른 NaN 불일치 0, 허용 오차 위반 0이었습니다. 최대 절대차는 4.4409e-16, 최대 상대차(분모 floor 1e-12)는 1.0603e-15로 원안의 1e-9보다 작습니다. 원판과 새 특징의 평균 절대차는 κ 순서대로 0.010853/0.010493/0.009917/0.008949/0.008202였습니다. 이 구현은 표본에서 D4 검사를 통과하지만 원판과 같은 값을 계산하지 않습니다.",
+      "caveat": "새 특징을 채택하거나 원본 src를 수정하지 않았습니다. 480장 표본 검사이며, 25,519장 전수 재정의·RF 재학습·순서 판정은 하지 않았습니다. D4는 격자를 보존하는 90° 회전·반사만 보장하며 임의 각도로 이미지를 재표집한 불변성을 보장하지 않습니다."
+    },
+    {
+      "item": 1,
+      "what_i_ran": "새 CV의 유한 표본 귀무값과 첫 원형 모멘트의 의미에 대한 합성 대조",
+      "code": "import runpy\nrunpy.run_path(r\"C:/Users/sc300/Projects/project_wafer_map/ai_review_kit_2차/review_checks.py\", run_name=\"__main__\")\n# 결과: 같은 폴더 review_measurements.json\n# kernel_probe.permutation_null_synthetic_geometry, synthetic.first_harmonic_counterexample",
+      "result": "31×31 유효 정사각형의 밴드 120개 die에서 불량 위치를 고정 개수로 비복원 표집했습니다(조건당 999회). κ=16에서 n=12/20/60의 귀무 CV 평균은 0.754692/0.813000/0.917432이고, κ=0은 0.760039/0.816180/0.917602였습니다. 또한 균등 36방향과 두 반대 방향에만 18개씩 몰린 입력은 둘 다 CV≈1, 단일 방향은 CV=0이었습니다.",
+      "caveat": "인공 기하와 검토용 κ에 대한 대조입니다. 실제 none 데이터는 키트에 없어 새 특징의 none sanity를 검증하지 않았습니다. n별 귀무 분포는 새 특징의 편향을 이해하기 위한 것으로, 귀무를 빼서 분류 특징으로 쓰자는 제안이 아닙니다."
+    },
+    {
+      "item": 3,
+      "what_i_ran": "라벨 순열의 보존량과 현재 argmax의 퇴화 사례 검사",
+      "code": "import runpy\nrunpy.run_path(r\"C:/Users/sc300/Projects/project_wafer_map/ai_review_kit_2차/review_checks.py\", run_name=\"__main__\")\n# 결과: 같은 폴더 review_measurements.json\n# permutation_basics",
+      "result": "전체 라벨 순열 후 8개 클래스의 전체 개수는 모두 보존됐습니다. 클래스 내 라벨 순열로 바뀐 행은 0입니다. 28쌍 감소량을 모두 0으로 둔 세 선행에서 현재 max 규칙은 모두 Center↔Donut을 선택해 3/3 일치를 만듭니다. 모든 쌍이 악화되는 감소량 -0.100,-0.101,…에서도 같은 코드가 -0.100의 쌍을 승자로 반환합니다.",
+      "caveat": "자료 변환과 판정 함수의 성질만 검사했습니다. RF를 라벨 순열마다 재학습하는 실험은 0회이며, 실측 R 일치의 p값을 산출하지 않았습니다. 이 검사는 실측 R의 효과가 0이라는 주장이 아닙니다."
+    },
+    {
+      "item": 1,
+      "what_i_ran": "1차 지적의 구현 수정에 대한 최소 회귀 확인",
+      "code": "import runpy\nrunpy.run_path(r\"C:/Users/sc300/Projects/project_wafer_map/ai_review_kit_2차/review_checks.py\", run_name=\"__main__\")\n# 결과: 같은 폴더 review_measurements.json\n# synthetic.corrected_auc, synthetic.pca_tie_nan_all_8",
+      "result": "수정된 azimuth.auc는 [1,1] 대 [1,1]에서 0.5, [0,1] 대 [0,1]에서 0.5, [0,1,1] 대 [0,0,1]에서 2/3으로 sklearn 정의와 일치했습니다. 1차 7×9 PCA 동점 반례는 수정 cc_variant(mode='nan')에서 D4 8개 모두 NaN이었습니다.",
+      "caveat": "구현 반례의 수정만 재검증했습니다. 과거 모든 AUC 해석이나 cc 수정판의 전수 성능을 이번 실행에서 재검증한 것은 아닙니다. shape2 본판과 저장된 특징은 여전히 기존 정의입니다."
+    }
+  ],
+  "missing_controls": [
+    {
+      "item": 1,
+      "control": "원판 circ_var만 맵별 D4 방향에 따라 바꾸는 대조, 동일 변환 배정·fold·다른 5개 특징 고정",
+      "why": "커널의 가중 방식 변경 효과와 방향 아티팩트 효과를 구분해야 합니다. 원판 cc_compact까지 함께 회전 재계산하면 두 변경이 섞입니다."
+    },
+    {
+      "item": 1,
+      "control": "κ=0, 미리 정한 κ 전 범위, 유한 표본·기하 귀무, 좁은 호·반대 두 호·균등 방향 및 중심점 대조",
+      "why": "D4 불변만으로 원래 산포 의미, 수치적 안정성, 불량 개수에 대한 민감도를 보장하지 않습니다. 일부 합성 대조는 이번 검토에서 실행했습니다."
+    },
+    {
+      "item": 1,
+      "control": "25,519장 모두의 원시 맵 또는 새 특징을 계산할 전체 밴드 좌표·불량 마스크, 원본 정밀도 캐시 및 split_orig",
+      "why": "키트에는 원시 맵 480장만 있습니다. 기존 특징 CSV로 나머지 25,039장의 커널 CV를 복원할 수 없고, 480장만 새 값으로 바꿔 전체 재학습하면 다른 정의가 혼합됩니다. 외부 분할 재실행에 필요한 split_orig도 제공 CSV에 없습니다. 기존 특징의 추가 부분집합 학습은 가능하지만 새 CV의 전수 재측정과는 다릅니다."
+    },
+    {
+      "item": 1,
+      "control": "새 특징의 개수·기하 대조를 과거 검사와 구분해 기록",
+      "why": "k=1 원판 CV의 n 고정 AUC=0.730은 docs/w2_metric_set.md §6과 src/edge_band.py에 이미 있습니다. '최종 밴드의 통제를 한 적이 전혀 없다'고 소급해서 쓰면 과거 기록을 지웁니다. 미실행인 것은 최종 6종 전체의 반복 통제와 새 커널 정의에 대한 대조입니다."
+    },
+    {
+      "item": 2,
+      "control": "S→R+S 및 E+S→E+R+S의 같은 표본 전이, 두 진짜 클래스별 분해와 전체 8종 precision/recall/F1",
+      "why": "E 선행에서의 개선을 세 선행 전부로 일반화하거나 Center의 큰 개선으로 Loc의 오류 이동을 가리면 안 됩니다. 쌍 밖 진짜 클래스에서 유입되는 false positive는 두 클래스의 F1에도 영향을 줍니다."
+    },
+    {
+      "item": 3,
+      "control": "7개 비어 있지 않은 부분집합의 공통 idx별 OOF와 모든 28쌍 감소량·승자 간격, 공동 lot 재표집",
+      "why": "세 단계 OOF만으로 R|S·R|E+S 등의 같은 표본 공동 변동을 만들 수 없습니다. 부분집합마다 따로 재표집하면 공유 모델·표본의 상관이 사라집니다."
+    },
+    {
+      "item": 3,
+      "control": "동점·전부 악화·효과 없음의 판정 테스트 및 결과 확인 전 고정된 추론 대상",
+      "why": "퇴화한 argmax를 실제로 푼 쌍으로 세거나, 귀무를 바꾸면서 원하는 일치/불일치 판정을 얻는 것을 막아야 합니다. 관찰된 공통 승자, 새 lot의 공통 승자, 효과 크기 동등성은 다른 주장입니다."
+    }
+  ],
+  "unanswerable": [
+    {
+      "item": 1,
+      "question": "새 커널 때문에 E의 순서 판정이 실제로 바뀌는가? 이번에는 480장 지표 검사만 했고 전수 특징·RF 재학습을 하지 않았습니다."
+    },
+    {
+      "item": 1,
+      "question": "WM-811K의 특정 각도 폭이 어떤 공정 물리 길이와 대응하는가? 현재 자료만으로 유일한 물리 κ를 확정할 수 없습니다."
+    },
+    {
+      "item": 1,
+      "question": "D4를 넘는 임의 각도 회전, 실제 none, 새 lot에서도 같은 의미와 불변성이 유지되는가? 현재 480장 표본과 합성 검사는 그 범위를 보장하지 않습니다."
+    },
+    {
+      "item": 2,
+      "question": "R의 세 선행 집합 전부에서 정답 전환이 주된가? E 선행에서는 실측했으나 다른 두 선행의 전이 예측은 이번에 생성하지 않았습니다."
+    },
+    {
+      "item": 3,
+      "question": "새 lot에서 R의 공통 승자 및 E/S의 서로 다른 승자가 유지되는가? 제공 데이터의 승자 열거와 고정 OOF bootstrap만으로 확정할 수 없습니다."
+    },
+    {
+      "item": 3,
+      "question": "'순서 무관'이 최대 감소 쌍의 이름 불변인지, 감소량 자체의 동등성인지, 물리적 병목 구조의 불변성인지? 사전 등록에서 먼저 분리해야 하며 하나의 라벨 순열로 셋을 동시에 검증할 수 없습니다."
+    }
+  ],
+  "first_question": "③에서 확정하려는 것은 이 25,519장·고정 RF·세 선행 집합에서 관찰된 승자의 일치입니까, 아니면 새로운 lot에서도 유지되는 공통 승자입니까?",
+  "files_read": [
+    "검토요청.md",
+    "docs/method_overview.md",
+    "docs/reproduction.md",
+    "docs/decisions.md",
+    "docs/w5_order.md",
+    "docs/w6_checks.md",
+    "docs/w4_none_sanity.md",
+    "docs/w2_metric_set.md",
+    "src/config.py",
+    "src/azimuth.py",
+    "src/edge_band.py",
+    "src/order_seed.py",
+    "src/order_dep.py",
+    "src/w6_impact.py",
+    "src/w6_checks.py",
+    "src/model8_final.py",
+    "src/shape2.py",
+    "src/verify_review.py",
+    "data/features.csv",
+    "data/oof_predictions.csv",
+    "data/maps_sample480.npz"
+  ]
+}
