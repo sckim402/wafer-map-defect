@@ -25,6 +25,7 @@ from shape2 import shape2, MAX_FAIL, DISK
 from model8_final import oof, SETS
 from w6_checks import load_ordered, six_feats, DIHEDRAL, FEAT_NAMES, K, TOL, N_PER_CLASS
 
+EIG_TOL = 1e-9          # 고유값 동점 판정 (상대)
 JITTER = 0.01          # w5_order.md의 seed 간 흔들림 — 사전 등록 판정선
 
 
@@ -109,7 +110,12 @@ def cc_variant(m, mode="base"):
     yy, xx = np.nonzero(lab == big)
     P = np.column_stack([xx.astype(float), yy.astype(float)])
     P -= P.mean(0)
-    ev, V = np.linalg.eigh(np.cov(P.T) + 1e-12 * np.eye(2))
+    ev, V = np.linalg.eigh(np.cov(P.T))
+    # 고유값이 같으면 주축이 유일하지 않다 -> 값이 정의되지 않는다.
+    # 1e-12*I를 더해도 두 고유값에 같은 값이 실려 동점은 그대로다.
+    # (2026-09-11 외부 검토 반례: 7x9 십자 맵이 90도에서 28.57% 변한다)
+    if abs(ev[1] - ev[0]) <= EIG_TOL * max(abs(ev[1]), 1e-300):
+        return np.nan
     proj = P @ V[:, 1]
     L = float(proj.max() - proj.min()) + 1.0
     return (n / L) / (DISK * np.sqrt(n))

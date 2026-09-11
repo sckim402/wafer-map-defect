@@ -1,0 +1,180 @@
+{
+  "reviewer": {
+    "model": "GPT-6 (Codex)",
+    "date": "2026-09-11"
+  },
+  "overstatements": [
+    {
+      "id": 1,
+      "line": 37,
+      "quote": "1층 1.81 → 6층 **1.07**로 수렴한다. `Edge-Loc` = `Loc` + 가장자리 구배이고, **구배가 연속이라\n임계값이 없다**는 것이 현재 진단이다.",
+      "problem": "클래스별 집계 프로파일이 깊이에 따라 가까워지는 관찰은 개별 웨이퍼의 구배 분포가 겹친다는 증거가 아니므로, 현재 자료로는 분류 임계값의 부재까지 결론낼 수 없다.",
+      "evidence_file": "docs/decisions.md",
+      "evidence_quote": "| **6** | **0.111** | **0.103** | 0.065 | **0.008** | **1.07** |",
+      "severity": "high"
+    },
+    {
+      "id": 2,
+      "line": 65,
+      "quote": "하나는 고쳤고(11월 적용)",
+      "problem": "cc_compact 수정판도 PCA 고유값 동점을 처리하지 않아 연결성분이 하나인 19-die 합성 맵에서 90도 회전으로 0.983698→0.702642가 되므로, 수정 완료가 아니라 기존 480장 표본에서 통과한 것으로 한정해야 한다.",
+      "evidence_file": "src/w6_impact.py",
+      "evidence_quote": "    ev, V = np.linalg.eigh(np.cov(P.T) + 1e-12 * np.eye(2))\n    proj = P @ V[:, 1]",
+      "severity": "high"
+    },
+    {
+      "id": 3,
+      "line": 61,
+      "quote": "각도 지표를 회전 불변량으로만 설계해 **특징 설계에는 영향이 없고**, 이 진단은 *\"notch 해석을 해도\n되는가\"*만 결정한다.",
+      "problem": "실제 구현의 circ_var와 cc_compact가 방향에 따라 달라지므로 설계 의도만으로 좌표계 미정렬이 특징 설계에 영향이 없다고 할 수 없으며, 고정 입력의 수치 재현과 방향 변화에 대한 강건성은 구분해야 한다.",
+      "evidence_file": "docs/w6_checks.md",
+      "evidence_quote": "| `circular variance` | **9.811e-02** | rot270 | **344 / 480** | ❌ |",
+      "severity": "medium"
+    },
+    {
+      "id": 4,
+      "line": 51,
+      "quote": "크기 축도 같은 방식으로 쟀다 — `size` 기여 +0.111 중 **84.3%는 반경 특징이 이미 가진 정보**였고\n**잔여가 주 +0.017 / 외부 −0.023으로 이식되지 않아 `size`를 넣지 않았다.**",
+      "problem": "84.3%는 특정 RF와 분할에서 반경 특징 추가 전후 size의 macro-F1 증분 감소율이며, 비선형 성능지표의 차이를 나눈 값만으로 실제 반경 정보의 비중을 84.3%라고 식별할 수는 없다.",
+      "evidence_file": "src/model8_size.py",
+      "evidence_quote": "    absorb = 1 - i5 / i3 if abs(i3) > 1e-9 else float(\"nan\")",
+      "severity": "medium"
+    },
+    {
+      "id": 5,
+      "line": 28,
+      "quote": "## 3. 결과 — 병목이 세 번 이동했다",
+      "problem": "제시된 세 특징 집합은 최대 병목의 상태 세 개와 상태 사이 이동 두 번을 보여주며, 가장자리 3종 도입 전 상태를 동일한 8종 분류·혼동 지표로 제시하지 않아 세 번째 이동은 입증되지 않았다.",
+      "evidence_file": "src/fig_bottleneck.py",
+      "evidence_quote": "STAGES = [\n    (\"Edge (3)\",      (\"cov\", \"ctr\", \"cv\")),\n    (\"+ Radial (5)\",  (\"cov\", \"ctr\", \"cv\", \"rc\", \"mp\")),\n    (\"+ Shape (6)\",   (\"cov\", \"ctr\", \"cv\", \"rc\", \"mp\", \"cc\")),\n]",
+      "severity": "medium"
+    },
+    {
+      "id": 6,
+      "line": 20,
+      "quote": "- ⚠ **이 분할은 표준이 아니다 — 조사한 8편 중 1편**이고 **원저자도 lot 단위가 아니다**(Wu 2015 §VI-A는\n  lot이 아니라 **중복**을 통제했다). *\"표준을 따랐다\"*가 아니라 ***\"소수파이며 누수를 재고 택했다\"***가 맞다",
+      "problem": "근거 자료가 확인한 것은 원논문에 lot 기준 분할을 명시한 근거가 없다는 점이지 lot 기준을 사용하지 않았다는 증거가 아니므로, 원저자도 lot 단위가 아니라는 단정은 원저자의 의도와 실제 lot 비중첩을 혼동한다.",
+      "evidence_file": "docs/w6_litscan.md",
+      "evidence_quote": "> **즉 「결과적으로 lot이 교차하지 않는다」는 참이고, 「lot 단위로 나눴다」는 논문 근거가 없다.**",
+      "severity": "medium"
+    },
+    {
+      "id": 7,
+      "line": 19,
+      "quote": "- **클래스별로 나누지 않는다** — lot 10,762개 중 **4,204개(39.1%)**가 2개 이상 클래스에 걸친다",
+      "problem": "대상은 none 제외 8종인데 10,762개·4,204개·39.1%는 none 포함 라벨 자료의 통계이므로, 8종의 8,047개 lot 중 다중 클래스 1,780개(약 22.1%)와 모집단을 구분해야 한다.",
+      "evidence_file": "docs/w3_split.md",
+      "evidence_quote": "전체 10,762개 lot 중 **4,204개(39.1%)**가 2개 이상 클래스의 웨이퍼를 갖는다.\n패턴 클래스만 따져도 1,780개가 걸친다.",
+      "severity": "medium"
+    },
+    {
+      "id": 8,
+      "line": 76,
+      "quote": "2. **외부에서 갈리는 클래스가 있다** — `Donut` F1 주 0.737 / **외부 0.415**(외부 test 146장)",
+      "problem": "0.737/0.415는 반경까지 추가한 5종 특징 단계의 비교인데 최종 6종 모델의 현재 한계처럼 제시돼 있으며, 최소한 5종 단계라고 표시하거나 동일한 6종 모델의 주·외부 값을 다시 병기해야 한다.",
+      "evidence_file": "docs/decisions.md",
+      "evidence_quote": "| Donut | 0.737 | 0.750 | +0.012 | 0.263 | 0.05 |",
+      "severity": "medium"
+    },
+    {
+      "id": 9,
+      "line": 79,
+      "quote": "4. **중복 웨이퍼맵 93그룹(0.58%)이 전부 lot을 넘어** 그룹 분할로 안 막힌다. 제거해도 Δ +0.0010\n   (방향도 반대) — *\"이 규모에서는 검출되지 않는다\"*까지가 전부다",
+      "problem": "93그룹 전체에 속한 표본은 187장(0.73%)이고 0.58%는 seed 0에서 fold를 교차한 73그룹·147장의 비율이므로, 현재 괄호는 중복 전체와 실제 교차 표본의 분모를 섞는다.",
+      "evidence_file": "docs/w6_checks.md",
+      "evidence_quote": "| 0 | 73 | 147 | **0.58%** |",
+      "severity": "low"
+    }
+  ],
+  "refutation_tests": [
+    {
+      "target": "Edge-Loc과 Loc의 구배가 연속이므로 두 클래스를 가르는 임계값이 없다는 진단.",
+      "measurement": "클래스 집계값 대신 웨이퍼마다 동일한 1~6층의 불량률·층별 die 수를 보존하고, 우선 g=1층 불량률−6층 불량률의 두 클래스 분포를 잰다. 임계값과 방향은 train lot에서만 정하고 test lot에서 클래스별 재현율·정밀도와 오류 구간을 보고하며 lot 단위 부트스트랩으로 불확실성을 낸다. 기하와 불량 개수의 공통 지지 구간도 별도로 비교한다.",
+      "expected_if_wrong": "집계 프로파일은 가까워져도 개별 g 또는 사전 지정한 프로파일 판별값에 클래스 간 간격이 있고 train에서 고정한 임계값이 test lot에서도 분리한다. 검토근거.md의 합성 반례는 같은 집계 경향과 완전한 임계값 분리가 양립함을 이미 확인했다."
+    },
+    {
+      "target": "cc_compact의 최대 연결성분 동점→NaN 수정으로 회전 불변성 문제가 해결됐다는 주장.",
+      "measurement": "최대 연결성분이 유일하되 PCA 공분산의 두 고유값이 같은 연결 마스크를 먼저 검사한다. 검토근거.md의 19개 불량 die 맵에 cc_variant(mode=\"nan\")을 적용하고 이면군 변환 전후 특징값·NaN 여부를 비교한다. 이후 실데이터에서 같은 조건의 빈도와 예측 변화율을 잰다.",
+      "expected_if_wrong": "이미 재현됐다: 공분산 diag(10/3,10/3), 연결성분 1개인데 0도 0.9836981519, 90도 0.7026415371로 상대차 28.57%다. 실제 데이터 발생률과 영향은 아직 미측정이다."
+    },
+    {
+      "target": "특징 설계와 교란 진단에 사용한 AUC 계산이 동점에서도 올바르다는 전제.",
+      "measurement": "src/azimuth.py의 auc를 P(score_pos>score_neg)+0.5*P(score_pos=score_neg) 직접 계산 및 sklearn.metrics.roc_auc_score와 대조한다. 동일 점수·동일 분포·부분 동점·무동점 조건을 검사한 뒤 기존 특징값은 유지한 채 현재 밴드의 AUC 표만 표준 구현으로 재계산한다.",
+      "expected_if_wrong": "이미 재현됐다: pos=neg=[1,1]에서 기존 함수는 0.0, 정의와 sklearn은 0.5이며 pos=neg=[0,1]에서도 0.25 대 0.5다. 실제 AUC 변화폭과 설계 판단 영향은 아직 미측정이고, 별도로 계산한 macro-F1·혼동행렬을 이 검사 하나로 무효화하지 않는다."
+    },
+    {
+      "target": "Center↔Loc 상호 오분류율의 최대 감소를 그 쌍의 해소로 해석하는 주장.",
+      "measurement": "같은 test 웨이퍼의 추가 전후 예측을 짝지어 A↔B 오류 감소분을 정답 전환과 제3클래스 이동으로 분해한다. E→E+R, S→S+R, E+S→E+R+S 각각에서 Center·Loc의 클래스별 재현율과 정밀도를 함께 보고한다.",
+      "expected_if_wrong": "쌍 오분류율은 감소하지만 해당 표본이 정답으로 가지 않고 다른 클래스 오답으로 이동한다. 합성 검사에서 A↔B 비율이 0.5→0인데 A/B 정답 수는 10/20으로 같을 수 있음을 확인했다; 실제 9개 조합은 별도 전이표로 구분해야 한다."
+    },
+    {
+      "target": "계열별 역할과 9/9 일치가 특정 분할·분류기의 결과를 넘어 안정적이라는 해석.",
+      "measurement": "특징 정의를 고정하고 주 분할·원저자 분할에서 7개 비어 있지 않은 계열 부분집합을 평가하되 분할 seed와 RF seed를 따로 변동시킨다. 같은 test lot에서 짝지은 감소량의 1·2위 차이, 28쌍 전체와 클래스별 재현율을 보고하고 lot 부트스트랩의 최상위 쌍 유지 비율을 잰다.",
+      "expected_if_wrong": "기존 3개 분할 seed는 일치해도 모델 난수나 test lot 구성 변화에서는 최상위 감소 쌍이 바뀌거나 1·2위가 구분되지 않는다; 이 경우 9/9 관찰은 보존하되 일반적인 순서 무관성으로 확대할 수 없다."
+    },
+    {
+      "target": "size 증분 감소의 84.3%를 물리적 반경 정보의 비중으로 해석하는 주장.",
+      "measurement": "같은 폴드에서 E, E+size, E+R, E+R+size의 표본별 예측을 비교해 size와 R이 함께 구제하는 오류와 서로 다른 오류를 센다. RF의 후보 특징 수를 명시적으로 고정한 대조와 클래스별 결과를 함께 내고 size·불량 개수의 공통 지지 구간에서도 R의 기여를 비교한다.",
+      "expected_if_wrong": "구제된 표본의 겹침과 클래스별 개선 구조가 84.3%라는 단일 비율로 설명되지 않거나 RF 설정에 따라 그 비율이 크게 달라진다; 이 경우 84.3%는 정보의 분해가 아니라 해당 실험의 성능 증분 감소율이다."
+    },
+    {
+      "target": "중복 제거와 특징 수정에서 macro-F1 변화가 작으면 병목 해석에도 영향이 작다는 전제.",
+      "measurement": "같은 평가 표본·폴드에서 중복 포함/제거 및 cc 원본/수정 조건의 8종 F1, 28쌍 오분류율, 단계별 최대 병목을 직접 비교한다. Near-full·Random·Scratch를 별도로 보고 중복 대표 선택에 클래스 순서가 작용하는 상충 라벨 3그룹의 처리도 명시한다.",
+      "expected_if_wrong": "전체 macro 변화는 ±0.01 이내여도 희소 클래스나 헤드라인 혼동 쌍의 순위가 달라진다; 현재 w6_impact.py의 macro 비교만으로는 이 가능성을 배제하지 못한다."
+    }
+  ],
+  "missing_for_reproduction": [
+    "데이터 판본·출처·파일 해시, failureType 라벨 추출 규칙, 8종의 정확한 이름과 클래스별 표본 수가 없다; lot 10,762개는 none 포함 통계이고 실제 8종 분할의 lot 수는 8,047개다.",
+    "맵 값 0=영역 밖·1=정상·2=불량, native grid 유지와 리사이즈·median filter 미적용, 유효 영역 내부 구멍의 처리 규칙이 없다.",
+    "6종 특징의 정확한 이름과 E/R/S 대응이 없다: E=(coverage,edge_contrast,circular variance), R=(radial_contrast,mid_peak), S=(cc_compact)다.",
+    "coverage의 분자·분모, EDGE_LAYERS=1, 8-이웃 침식과 바깥 False 패딩으로 층을 추출하는 방법, 빈 밴드의 NaN 조건이 없다.",
+    "edge_contrast가 1층 대 3~6층의 불량률 비이고 내부 층의 die를 합쳐 비율을 계산한다는 점과, 양쪽 비율에 (f+1)/(n+2)를 쓰는 Laplace 평활이 없다.",
+    "CV의 수식 1−|Σw exp(iθ)|/Σw, 유효 영역 bounding box의 중심·행열별 반폭으로 정규화한 좌표, 36개 bin의 경계·배정 규칙, 밴드 die 수의 역수 가중, MIN_FAIL=12, 최종 모델의 subsample=None 정보가 없다.",
+    "F1a=안쪽 불량률/바깥 불량률, F1b=중간 불량률/max(안쪽,바깥), R1·R2 경계의 포함 방향, 좌표 정규화·각 영역의 Laplace 평활과 빈 영역의 NaN 처리가 없다.",
+    "cc_compact의 8-이웃 최대 불량 연결성분, PCA 투영 범위+1로 정하는 길이 L, sqrt(n)/(sqrt(pi)/2*L) 수식, 총 불량<3 또는 >4000 및 성분<3인 경우의 결측 처리, 성분 동점·고유값 동점 정책이 없다; 제출 수치는 수정판이 아니라 원본에서 나온다.",
+    "분류기 종류와 설정이 없다: 실제 코드는 RandomForestClassifier(n_estimators=300,min_samples_leaf=2,class_weight=\"balanced\",random_state=0,n_jobs=-1)이고 나머지 기본값과 NaN 직접 입력을 사용한다; sqrt 방식의 max_features도 명시해야 한다.",
+    "sklearn 1.7.2 고정 및 NumPy·SciPy 등 의존성 버전, 입력 행·클래스·lot 정렬 순서와 folds 저장 방식이 없다; seed만으로 버전이 다른 실행을 재현할 수 없다는 사실은 D-022에서 확인됐다.",
+    "각 seed에서 5개 test fold의 out-of-fold 예측을 합쳐 F1을 계산한 뒤 3개 seed를 평균하는 집계 순서가 없다; 분할 seed 0/1/2와 고정 RF seed 0은 서로 다른 난수다.",
+    "혼동 쌍의 정확한 정의 (Mij+Mji)/(ni+nj), 28쌍 중 최댓값 선택, 방향별 비율과의 차이, F1의 zero_division=0 처리와 오차막대·동률 판정 방식이 없다.",
+    "외부 검증이 독립 데이터셋이 아니라 같은 WM-811K의 trainTestLabel 또는 원본 오타 trianTestLabel을 쓰는 원저자 제공 분할이라는 설명이 없다; Training 17,625장/Test 7,894장과 모델 seed, 설계에 사용한 관찰 데이터와의 관계도 밝혀야 한다.",
+    "순서 분석의 7개 계열 부분집합·6경로, 비어 있는 선행 집합 제외, 푸는 쌍=오분류율 최대 감소, 대체 가능=현재 RF의 leave-one-out macro 하락<0.01, 폐기된 TIE=0.005 대신 order_seed.py의 seed별 판정을 쓰는 순서가 없다.",
+    "교란 통제의 밴드 버전·대상 클래스·층화 경계·가중 방식·불량 20개 재표집의 자격 조건과 반복 수, 최종 6종 절제 전체의 개수 통제는 미실행이라는 범위가 없다.",
+    "중복 해시가 shape와 바이트열의 완전 동일성이라는 정의, 그룹당 첫 표본 유지 및 상충 라벨 처리, 기존 fold를 유지한 채 같은 25,425장에서 비교한 절차가 없다.",
+    "실행에 필요한 원자료·클래스별 npz·split_folds·특징 캐시와 의존성 목록이 이 폴더에 없다; 캐시 생성 순서와 입력·코드 버전을 확인할 식별자도 개요에 없어 문서만으로 전체 수치 재현은 불가능하다."
+  ],
+  "first_question": "클래스 평균 프로파일의 수렴과 별개로, 개별 웨이퍼의 가장자리 구배 분포가 Edge-Loc과 Loc 사이에서 실제로 겹친다는 것은 어떤 train/test 분리 측정으로 확인했습니까?",
+  "files_read": [
+    "검토요청.md",
+    "docs/method_overview.md",
+    "docs/decisions.md",
+    "docs/w5_order.md",
+    "docs/w6_checks.md",
+    "docs/w6_litscan.md",
+    "docs/w4_size.md",
+    "docs/w3_model8.md",
+    "docs/w3_split.md",
+    "docs/w3_external.md",
+    "docs/w2_confound.md",
+    "docs/w2_metric_set.md",
+    "docs/coordinate_alignment.md",
+    "docs/abstract_draft.md",
+    "docs/pattern_process_mapping.md",
+    "src/config.py",
+    "src/load_data.py",
+    "src/split.py",
+    "src/model8.py",
+    "src/model8_final.py",
+    "src/order_dep.py",
+    "src/order_seed.py",
+    "src/model8_size.py",
+    "src/edge_band.py",
+    "src/edge_contrast.py",
+    "src/azimuth.py",
+    "src/radial.py",
+    "src/shape2.py",
+    "src/w6_checks.py",
+    "src/w6_impact.py",
+    "src/fig_bottleneck.py",
+    "bottleneck_shift.png"
+  ]
+}

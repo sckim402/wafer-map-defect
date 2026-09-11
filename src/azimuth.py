@@ -20,6 +20,7 @@
       -> 회전 불변량인 circular variance만 쓴다.
 """
 import numpy as np
+from scipy.stats import rankdata
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -155,7 +156,10 @@ def auc(pos, neg):
     if len(pos) == 0 or len(neg) == 0:
         return np.nan
     allv = np.concatenate([pos, neg])
-    ranks = allv.argsort().argsort() + 1
+    # 동점에는 **평균 순위**를 준다. argsort().argsort()는 서수 순위라
+    # 동점을 임의로 갈라, 완전 동점 입력이 AUC 0.5가 아니라 0이 된다.
+    # (2026-09-11 외부 검토가 재현: [1,1] vs [1,1] -> 0.000 / 정의값 0.500)
+    ranks = rankdata(allv)
     r_pos = ranks[:len(pos)].sum()
     u = r_pos - len(pos) * (len(pos) + 1) / 2
     return u / (len(pos) * len(neg))
