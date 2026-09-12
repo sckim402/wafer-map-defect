@@ -9,6 +9,15 @@
 **귀무**: 같은 층·같은 불량 수를 **그 층의 유효 die 위에만** 재배치 (기하·표본 수 보존).
 4차 외부 검토는 층별 2×K G 통계로 같은 질문을 물었다 — **통계량이 다른 두 경로다**.
 
+**⛔ 이 검사가 식별하지 않는 것** (2026-09-12 6차 외부 검토 #3, 자체 재현 완료):
+  - **「한 방위의 단일 덩어리」가 아니다.** 서로 반대편 두 덩어리도 기각된다
+    (각 35° 폭·32 die, 최선 호 점유 0.500, **p=0.015**). 최댓값 하나만 보기 때문이다
+  - **「내부 구배의 부재」가 아니다.** 최외곽 층만 읽으므로 내부 1,101 die를
+    전부 정상↔전부 불량으로 바꿔도 통계량과 p가 **소수점까지 같다**
+  - 말할 수 있는 것은 **「층 내 균등 재배치에 비해 일부 90° 호의 불량 점유가 높다」**뿐이다.
+    기각된 Edge-Loc조차 최선 호 점유 중앙값이 **0.474**(같은 맵의 귀무 기대 **0.339**)이고,
+    **불량의 절반 이상은 그 호 밖에 있다**
+
 돌리기: ./.venv/Scripts/python.exe src/azimuth_local.py [N_PER_CLASS] [B]
 """
 import sys
@@ -37,8 +46,20 @@ def outer_layer(v):
 
 
 def arc_masks(theta):
-    """호 시작점마다 '이 die가 호 안인가'를 미리 만들어 둔다."""
-    return np.stack([((theta - s) % 360) < ARC for s in range(0, 360, STEP)])
+    """호 시작점마다 '이 die가 호 안인가'를 미리 만들어 둔다.
+
+    ⚠ **호는 닫힘 `[s, s+ARC]`이다** (2026-09-12 6차 외부 검토 #2 정정).
+    반열림 `[s, s+ARC)`으로 두면 **좌우 반사에서 통계량이 바뀐다** —
+    유효영역이 대칭이면 중심 `cy`가 정수라 같은 행의 die가 θ=0°·180°에
+    **정확히** 얹히고, 반열림 경계가 그 점의 소속을 반사에서 뒤집는다.
+    `circ_var`의 bin 경계 문제와 같은 계열이다 (D-024).
+
+    **닫으면 사라진다.** 반사 θ→−θ는 호 `s`를 호 `270−s`로 보내고 둘 다
+    10의 배수라 **족(族)이 자기 자신으로 가므로 최댓값이 보존된다.**
+    `circ_var`와 달리 **이쪽은 구조적이지 않다** — 실측 1,962장 전수에서
+    반열림 16장 변화(최대 |Δ| 0.038) → 닫힘 **0장**.
+    """
+    return np.stack([((theta - s) % 360) <= ARC for s in range(0, 360, STEP)])
 
 
 def best_frac(masks, fail):
@@ -54,7 +75,10 @@ def one_map(m, rng):
     fail = (m[lay] == 2)
     k = int(fail.sum())
     if k < MIN_FAIL or k == len(fail):
-        return np.nan, np.nan          # 전부 불량이면 호 점유율이 1로 고정된다
+        # ⚠ 주석이 틀렸었다 (6차 외부 검토 #7): 전부 불량이면 점유율은 1이 아니라
+        # **기하가 정하는 최대 호의 die 비율**이다(반경 20 원판이면 0.25).
+        # 진짜 이유는 **모든 재배치가 같아 검정이 퇴화**하는 것이다(p=1).
+        return np.nan, np.nan
     cy, cx = np.array(np.nonzero(v)).mean(axis=1)
     masks = arc_masks(np.degrees(np.arctan2(ys - cy, xs - cx)) % 360)
     obs = best_frac(masks, fail.astype(float))
@@ -69,46 +93,75 @@ def one_map(m, rng):
 
 def main():
     rng = np.random.default_rng(SEED)
-    print(f"최외곽 1층 · 최대 연속 {ARC:.0f}° 호 점유율 · 순열 B={B} · 클래스당 {N_PER}장")
-    print(f"\n{'클래스':<11}{'n':>5}{'평균 점유':>11}{'p<=.05':>9}{'비율':>8}{'p 중앙값':>11}")
-    print("-" * 56)
+    print(f"최외곽 1층 · 최대 연속 {ARC:.0f}° 호 점유율(닫힘) · 순열 B={B} · 클래스당 {N_PER}장")
+    print("")
+    print("⚠ 아래 '비율'은 **검정 가능한 맵에서의 명목 p<=.05 기각률**이다 (6차 외부 검토 #6).")
+    print("  검출력이 층 안 불량 수 k에 강하게 붙는다 — 같은 기하·같은 방위 가중치에서")
+    print("  k만 6/20/50으로 바꾸면 기각률이 3% -> 40% -> 75%로 움직인다.")
+    print("  **클래스 간 비를 국소성의 크기로 읽지 않는다.** k 중앙값과 제외 장수를 같이 적는다.")
+    print("")
+    print(f"{'클래스':<11}{'n':>5}{'제외':>5}{'k 중앙':>8}{'평균 점유':>11}{'p<=.05':>9}{'비율':>8}{'p 중앙값':>11}")
+    print("-" * 70)
     out = {}
     for c in config.PATTERN_CLASSES:
         maps = np.load(config.DATA_PROCESSED / f"{c}.npz", allow_pickle=True)["wafer_maps"]
         pick = rng.permutation(len(maps))[:N_PER]
-        O, P = [], []
+        O, P, K = [], [], []
         for i in pick:
-            o, p = one_map(maps[i], rng)
+            m = np.asarray(maps[i])
+            o, p = one_map(m, rng)
             if not np.isnan(o):
                 O.append(o); P.append(p)
-        O, P = np.array(O), np.array(P)
-        out[c] = (len(O), O.mean(), int((P <= .05).sum()), float(np.median(P)))
-        n, mo, nr, pm = out[c]
-        print(f"{c:<11}{n:>5}{mo:>11.3f}{nr:>9}{nr / n:>8.1%}{pm:>11.4f}")
+                K.append(int((m[outer_layer(m > 0)] == 2).sum()))
+        O, P, K = np.array(O), np.array(P), np.array(K)
+        out[c] = (len(O), O.mean(), int((P <= .05).sum()), float(np.median(P)), float(np.median(K)))
+        n, mo, nr, pm, km = out[c]
+        print(f"{c:<11}{n:>5}{len(pick) - n:>5}{km:>8.0f}{mo:>11.3f}{nr:>9}{nr / n:>8.1%}{pm:>11.4f}")
     return out
 
 
 def demo():
-    """합성 자기 검사 — 몰린 것과 안 몰린 것을 실제로 가르는가."""
+    """합성 자기 검사 — 몰린 것과 안 몰린 것을 실제로 가르는가.
+
+    ⚠ **원점을 배열 원점으로 뒀던 것을 고쳤다** (6차 외부 검토 #5).
+    원판이 (20,20) 중심인데 `arctan2(ys−0, xs−0)`으로 쟀으므로 θ가 0~90°에만
+    깔렸고, `th < 45`는 의도한 45° 쐐기(20 die)가 아니라 **거의 반원(77 die)**을
+    골랐다. **출력 p=0.001은 그대로였다** — 반원도 몰린 입력이라 통과했을 뿐이고,
+    **검사가 무엇을 재고 있는지는 검사 자신이 보장하지 않는다.**
+
+    ⚠ **반사 회귀를 같이 건다** (6차 #2). 몰림/흩뿌림 두 사례만 막으면
+    **같은 계열의 다음 실패를 또 놓친다** (D-030).
+    """
     rng = np.random.default_rng(0)
     g = np.mgrid[-20:21, -20:21]
     v = (g[0] ** 2 + g[1] ** 2) <= 20 ** 2
     lay = outer_layer(v)
     ys, xs = np.nonzero(lay)
-    th = np.degrees(np.arctan2(ys - 0.0, xs - 0.0)) % 360
+    cy, cx = np.array(np.nonzero(v)).mean(axis=1)          # 본체와 같은 중심
+    th = np.degrees(np.arctan2(ys - cy, xs - cx)) % 360
+    wedge = th < 45
+    assert wedge.sum() < 0.2 * len(ys),         f"45° 쐐기가 층의 {wedge.sum() / len(ys):.0%}다 — 원점이 또 어긋났다"
 
     m = np.where(v, 1, 0).astype(np.uint8)      # ⓐ 한 방위에 몰린 덩어리
-    m[ys[th < 45], xs[th < 45]] = 2
+    m[ys[wedge], xs[wedge]] = 2
     _, p_local = one_map(m, rng)
 
     m2 = np.where(v, 1, 0).astype(np.uint8)     # ⓑ 같은 개수를 층 전체에 흩뿌린 것
-    idx = rng.choice(len(ys), int((th < 45).sum()), replace=False)
+    idx = rng.choice(len(ys), int(wedge.sum()), replace=False)
     m2[ys[idx], xs[idx]] = 2
     _, p_unif = one_map(m2, rng)
 
     assert p_local <= 0.01, f"몰린 입력을 못 잡는다: p={p_local}"
     assert p_unif > 0.05, f"흩뿌린 입력을 잡아 버린다: p={p_unif}"
-    print(f"demo ok — 몰림 p={p_local:.4f} / 흩뿌림 p={p_unif:.4f}")
+
+    # 반사 회귀 — 호를 닫아 놨으니 값이 정확히 같아야 한다
+    for mm in (m, m2):
+        for flip in (mm[:, ::-1], mm[::-1, :], mm.T):
+            a, b = one_map(mm, np.random.default_rng(1))[0], one_map(flip, np.random.default_rng(1))[0]
+            assert abs(a - b) < 1e-12, f"반사에서 통계량이 바뀐다: {a} vs {b}"
+
+    print(f"demo ok — 쐐기 {int(wedge.sum())}/{len(ys)} die · 몰림 p={p_local:.4f} / "
+          f"흩뿌림 p={p_unif:.4f} · 반사 6종 불변")
 
 
 if __name__ == "__main__":
