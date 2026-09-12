@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""5차 키트 채점 — 재현값을 정답키와 대조한다.
+"""5·6차 키트 채점 — 재현값을 정답키와 대조한다.
 
 **채점 방식은 검토요청.md §A-4에 미리 공개했다.** 맞히기 게임이 아니라 문서 검사다.
 
@@ -10,7 +10,13 @@
 
 **중간량 4종(n_valid·n_band·f_band·cc_n)이 맞고 최종값만 틀리면 갈라진 곳은 마지막 식이다.**
 
-돌리기: ./.venv/Scripts/python.exe src/grade_kit5.py <재현값.csv>
+돌리기: ./.venv/Scripts/python.exe src/grade_kit.py <재현값.csv> [정답키.npz]
+
+**6차 합격선은 결과를 보기 전에 정했고 검토요청.md에 공개했다** (§A-4):
+  ① 중간량 4종 + 특징 6종 **전부 >= 99%** (특히 circ_var)
+  ② severity=high인 assumptions **0건**
+  **둘 다** 통과해야 "문서가 충분하다"고 쓴다. ①만이면 불충분이다 —
+  5차에서 4종이 100%였는데 그중 셋이 **찍어서 맞은 것**이었다 (D-030).
 """
 import sys
 
@@ -18,7 +24,8 @@ import numpy as np
 
 import config
 
-KEY = config.DATA_PROCESSED / "kit5_answer_key.npz"
+KEY = config.DATA_PROCESSED / "kit5_answer_key.npz"   # 두 번째 인자로 바꿀 수 있다
+PASS = 0.99                                           # 사전 등록한 값 합격선
 COLS = {"coverage": "cov", "edge_contrast": "ctr", "circ_var": "cv",
         "radial_contrast": "rc", "mid_peak": "mp", "cc_compact": "cc"}
 MID = ["n_valid", "n_band", "f_band", "cc_n"]
@@ -55,9 +62,9 @@ def classify(a, b):
     return f"③ 정의 다름 (상관 {r:+.4f})"
 
 
-def grade(path):
+def grade(path, key_path=None):
     sub = read_csv(path)
-    key = dict(np.load(KEY, allow_pickle=True).items())
+    key = dict(np.load(key_path or KEY, allow_pickle=True).items())
     assert "idx" in sub, "재현값.csv에 idx 열이 없다"
 
     order = {int(v): i for i, v in enumerate(sub["idx"])}
@@ -78,6 +85,7 @@ def grade(path):
               ("" if eq.all() else f"   {classify(a, b)}"))
 
     print("\n=== 특징 6종 ===")
+    rates_ = []
     print(f"  {'특징':<17}{'엄밀 일치':>10}{'NaN 위치':>10}   진단")
     print("  " + "-" * 68)
     for name, k in COLS.items():
@@ -86,8 +94,17 @@ def grade(path):
         a, b = sub[name][take], key[k][have].astype(float)
         eq = np.isclose(a, b, rtol=1e-9, atol=0.0, equal_nan=True)
         nan_eq = (np.isnan(a) == np.isnan(b)).mean()
+        rates_.append((name, eq.mean()))
         diag = "✅" if eq.all() else classify(a, b)
         print(f"  {name:<17}{eq.mean():>10.2%}{nan_eq:>10.2%}   {diag}")
+
+    allr = rates_ + [(k, v) for k, v in mid_ok.items() if v is not None]
+    if allr:
+        nm, lo = min(allr, key=lambda kv: kv[1])
+        print(f"\n  ① 값 합격선 {PASS:.0%} — 최저는 {nm} {lo:.2%}  "
+              f"{'✅ 통과' if lo >= PASS else '❌ 불합격'}")
+    print("  ② 추측 합격선 — severity=high인 assumptions가 0건이어야 한다 (검토결과.json에서 센다)")
+    print("     ⚠ ①만 통과한 것은 불충분이다. 5차에서 4종이 100%였는데 셋은 찍어서 맞은 것이었다")
 
     print("\n  ⚠ 불일치가 곧 문서 결함은 아니다. 해당 정의식과 내 코드를 직접 대조한다.")
     if any(v is not None and v < 1 for v in mid_ok.values()):
@@ -111,6 +128,6 @@ if __name__ == "__main__":
     demo()
     if len(sys.argv) > 1:
         print()
-        grade(sys.argv[1])
+        grade(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
     else:
-        print("\n사용법: src/grade_kit5.py <재현값.csv>")
+        print("\n사용법: src/grade_kit.py <재현값.csv> [정답키.npz]")
