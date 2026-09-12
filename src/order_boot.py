@@ -81,11 +81,21 @@ def rates(counts):
 
 
 def winners(dec):
-    """(B, 28) 감소량 -> 승자 인덱스. 동점과 비양수는 -1(승자 없음)."""
-    mx = dec.max(axis=1)
-    top = dec.argmax(axis=1)
-    n_at_max = (dec == mx[:, None]).sum(axis=1)
-    return np.where((n_at_max > 1) | (mx <= 0), -1, top)
+    """(B, 28) 감소량 -> 승자 인덱스. 동점·비양수·NaN은 -1(승자 없음).
+
+    ⚠ **NaN을 명시적으로 막아야 한다** (2026-09-12 5차 외부 검토 #1).
+    한 쌍이라도 NaN이면 `max`가 NaN이 되는데, `dec == mx`는 전부 False라
+    동점수가 0이고 `mx <= 0`도 False다 — **두 배제 조건이 다 빠져나가
+    NaN 쌍이 승자가 된다.** D-027이 고친 것과 같은 계열이고, 이 함수의
+    `demo()`가 0과 음수만 시험해 놓쳤다. 분모 `row[i]+row[j]`가 0인 draw에서
+    실제로 발생할 수 있다(D-029 실행분에서는 0건이었다).
+    """
+    bad_row = ~np.isfinite(dec).all(axis=1)
+    safe = np.where(np.isfinite(dec), dec, -np.inf)
+    mx = safe.max(axis=1)
+    top = safe.argmax(axis=1)
+    n_at_max = (safe == mx[:, None]).sum(axis=1)
+    return np.where(bad_row | (n_at_max > 1) | (mx <= 0), -1, top)
 
 
 def demo():
@@ -97,7 +107,16 @@ def demo():
     clear = np.zeros((200, len(PAIRS)))
     clear[:, 7] = 0.1
     assert (winners(clear) == 7).all(), "명백한 승자를 못 잡는다"
-    print("demo ok — 0/음수 입력에서 승자 0건, 명백한 승자는 200/200")
+
+    # NaN 회귀 — 5차 외부 검토 #1. 0과 음수만 시험하면 이 계열을 놓친다.
+    nan_zero = np.zeros((50, len(PAIRS))); nan_zero[:, 5] = np.nan
+    assert (winners(nan_zero) < 0).all(), "NaN 쌍을 승자로 통과시킨다"
+    nan_neg = np.full((50, len(PAIRS)), -0.5); nan_neg[:, 11] = np.nan
+    assert (winners(nan_neg) < 0).all(), "NaN이 섞이면 음수뿐인데 승자를 낸다"
+    nan_ok = np.zeros((50, len(PAIRS))); nan_ok[:, 3] = 0.2; nan_ok[:, 9] = np.nan
+    assert (winners(nan_ok) < 0).all(), "NaN이 한 쌍이라도 있으면 그 draw는 버려야 한다"
+
+    print("demo ok — 0/음수/NaN 입력에서 승자 0건, 명백한 승자는 200/200")
 
 
 def main():
