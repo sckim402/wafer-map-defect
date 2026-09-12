@@ -44,9 +44,12 @@ def strat_auc(pos, neg, pos_key, neg_key, edges):
     여기서 살아남는 분리력이 교란과 독립적인 신호다.
     """
     rows, wsum, asum = [], 0.0, 0.0
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        p = pos[(pos_key >= lo) & (pos_key < hi)]
-        n = neg[(neg_key >= lo) & (neg_key < hi)]
+    for k, (lo, hi) in enumerate(zip(edges[:-1], edges[1:])):
+        # 마지막 구간은 닫아 둔다. 전부 반열림으로 두면 표본 최댓값이
+        # 어느 층에도 안 들어간다 (2026-09-12 외부 검토 #7: 60장 중 30장 누락)
+        hi_ok = (lambda v: v <= hi) if k == len(edges) - 2 else (lambda v: v < hi)
+        p = pos[(pos_key >= lo) & hi_ok(pos_key)]
+        n = neg[(neg_key >= lo) & hi_ok(neg_key)]
         p = p[~np.isnan(p)]; n = n[~np.isnan(n)]
         if len(p) < 30 or len(n) < 30:
             rows.append((lo, hi, len(p), len(n), np.nan)); continue

@@ -14,6 +14,7 @@
       -> 가장자리 영역(r>=R_CUT)의 불량 die 수가 MIN_FAIL 이상이어야 계산 가능.
 """
 import numpy as np
+from scipy.stats import rankdata
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -47,7 +48,9 @@ def q(x):
 def mannwhitney_auc(a, b):
     """분포 동일성의 실용적 척도. 0.5면 동일, 0/1이면 완전 분리."""
     allv = np.concatenate([a, b])
-    ranks = allv.argsort().argsort() + 1
+    # 동점에 평균 순위. map_size는 정수라 동점이 0.302% 있다
+    # (2026-09-12 외부 검토 #2: 0.7805 -> 0.7806)
+    ranks = rankdata(allv)
     u = ranks[:len(a)].sum() - len(a) * (len(a) + 1) / 2
     return u / (len(a) * len(b))
 

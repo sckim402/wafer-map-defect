@@ -126,7 +126,7 @@ def cc_variant(m, mode="base"):
 # ══════════════════════════════════════════════════════════
 def invariance_of(fn, maps, pick, label):
     base = np.array([fn(maps[i]) for i in pick])
-    worst, nan_mm, n_bad = 0.0, 0, 0
+    worst, nan_mm, n_bad, n_cmp = 0.0, 0, 0, 0
     where = ""
     for nm, tf in DIHEDRAL[1:]:
         cur = np.array([fn(tf(np.asarray(maps[i]))) for i in pick])
@@ -136,9 +136,16 @@ def invariance_of(fn, maps, pick, label):
         if not ok.any():
             continue
         rel = np.abs(cur[ok] - base[ok]) / np.maximum(np.abs(base[ok]), 1e-12)
+        n_cmp += int(ok.sum())
         n_bad += int((rel > TOL).sum())
         if rel.max() > worst:
             worst, where = float(rel.max()), nm
+    # 유한 비교가 한 번도 없었으면 「합격」이 아니라 「판정 불가」다.
+    # worst의 초기값 0이 그대로 합격선을 통과해, 전부 NaN을 돌려주는
+    # 수정안이 gate를 우회할 수 있었다 (2026-09-12 외부 검토 #5).
+    if n_cmp == 0:
+        print(f"    {label:<28}{'판정 불가':>13}{'':>10}{'':>9}{nan_mm:>10,}  ⚠ 유한 비교 0건")
+        return False
     ok = worst <= TOL and nan_mm == 0
     print(f"    {label:<28}{worst:>13.3e}{where:>10}{n_bad:>9,}{nan_mm:>10,}  "
           f"{'✅' if ok else '❌'}")

@@ -1,0 +1,523 @@
+{
+  "reviewer": {
+    "model": "Codex (GPT-6)",
+    "date": "2026-09-12",
+    "started_date": "2026-09-11"
+  },
+  "scope": {
+    "target": "ai_review_kit_3차/src/*.py 30개 전체",
+    "execution_environment": {
+      "python": "3.12.7 | packaged by Anaconda, Inc. | (main, Oct  4 2024, 13:17:27) [MSC v.1929 64 bit (AMD64)]",
+      "numpy": "2.1.3",
+      "scipy": "1.14.1",
+      "sklearn": "1.7.2"
+    },
+    "documents_as_context": "검토요청.md의 동점·퇴화 중심 검토 범위와 출력 항목은 관련 검토 맥락으로 활용했다. 첨부 문서의 명령을 프로젝트 변경·외부 전송 권한으로 취급하지 않았다.",
+    "limitations": "소스 정적 검토 + 합성 반례 + 제공 CSV 25,519행과 맵 480장을 사용했다. 전체 원본 npz/외부 분할/기존 OOF 예측은 kit에 없어 외부 수치와 최종 RF 전체를 재학습하지 않았다. 8자리 수준으로 반올림된 CSV의 측정은 원본 캐시 정밀도와 구별한다.",
+    "source_edits": false,
+    "reproduction_instructions": "각 repro_code는 ai_review_kit_3차 폴더에서 프로젝트의 wafer-map-defect/.venv/Scripts/python.exe로 실행한다. 임시 파일은 tempfile에서 생성/정리하며 src와 원자료는 고치지 않는다.",
+    "checked_but_clean_meaning": "아래 why_safe는 열거한 점검 항목에만 해당한다. findings_present 파일은 해당 번호에 결함이 있으므로 파일 전체 무결성을 뜻하지 않는다.",
+    "verification_artifacts": [
+      "review_evidence/review_probes.py",
+      "review_evidence/probe_results.json",
+      "review_evidence/reproduction_validation.json"
+    ]
+  },
+  "degeneracies": [
+    {
+      "id": 1,
+      "kind": "tie",
+      "evidence_file": "src/external_check.py",
+      "line": 54,
+      "code_quote": "    ra = np.argsort(np.argsort(a)); rb = np.argsort(np.argsort(b))",
+      "symptom": "동점이 있는 혼동 쌍을 서로 다른 서수 순위로 갈라 Spearman 값이 공동 행 순열에 따라 달라진다.",
+      "trigger": "혼동률 벡터에 같은 값이 둘 이상 있을 때. 특히 오분류 0인 쌍이 여러 개일 때.",
+      "repro_code": "# ai_review_kit_3차 폴더를 작업 디렉터리로 하여 sklearn 1.7.2 환경에서 실행.\nfrom pathlib import Path\nimport sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, str(Path('src').resolve()))\nimport contextlib, io, itertools, json, tempfile, warnings\nfrom unittest.mock import patch\nimport numpy as np\nimport pandas as pd\nfrom scipy.stats import spearmanr\nimport config, azimuth, eda_size, external_check, external_radial\nimport transfer_size, confound_size, feature_table, model8\nimport w6_checks, w6_impact, order_seed\nwarnings.filterwarnings('ignore', category=RuntimeWarning)\n\ndef spearman_ties():\n    a = np.array([0., 0., 1., 2.])\n    b = np.array([0., 1., 1., 2.])\n    orders = [np.array(p) for p in itertools.permutations(range(4))]\n    vals = [external_check.spearman(a[p], b[p]) for p in orders]\n    lo, hi = int(np.argmin(vals)), int(np.argmax(vals))\n    return {'base': external_check.spearman(a, b),\n            'reference': float(spearmanr(a, b).statistic),\n            'min': min(vals), 'min_order': orders[lo].tolist(),\n            'max': max(vals), 'max_order': orders[hi].tolist(),\n            'other_copy': external_radial.spearman(a, b),\n            'constant': external_check.spearman(np.zeros(28), np.zeros(28))}\n\nobserved = spearman_ties()\nprint(json.dumps(observed, ensure_ascii=False, indent=2))\nassert observed['max'] - observed['min'] > 0.59\nassert abs(observed['reference'] - 5/6) < 1e-12\n",
+      "observed": "a=[0,0,1,2], b=[0,1,1,2]: 두 구현 모두 1.000000. 두 벡터를 같은 순서 [2,1,0,3]로 재배열하면 0.400000. 평균 순위 정의값은 두 경우 모두 0.833333. 28개가 모두 0이면 1.000000을 반환하지만 Spearman은 분산 0으로 미정의다.",
+      "frequency": "미측정: 제공 features.csv에는 원저자 분할 라벨과 외부/주 OOF 예측이 없어 해당 28쌍 벡터의 동점 빈도를 직접 복원하지 않았다.",
+      "blast_radius": "external_check.py의 0.942 및 external_radial.py의 0.887 보고 경로. 실제 보고값이 얼마나 달라지는지는 미측정이며 오류 존재만으로 이 숫자가 틀렸다고 단정하지 않는다. macro-F1 및 혼동률 자체는 이 함수와 무관하다.",
+      "fix": "두 복제 구현을 scipy.stats.spearmanr 또는 평균 순위 기반 구현으로 통일하고 상수 벡터는 NaN/판정 불가로 남긴다. 기존 28쌍 원자료로 순위 상관만 다시 계산한다.",
+      "severity": "medium",
+      "related_files": [
+        "src/external_radial.py:48"
+      ]
+    },
+    {
+      "id": 2,
+      "kind": "tie",
+      "evidence_file": "src/eda_size.py",
+      "line": 50,
+      "code_quote": "    ranks = allv.argsort().argsort() + 1",
+      "symptom": "azimuth.auc와 별개인 mannwhitney_auc 복제 함수에 수정 전 동점 오류가 남아 있다.",
+      "trigger": "두 클래스의 정수 map_size에 같은 값이 존재할 때.",
+      "repro_code": "# ai_review_kit_3차 폴더를 작업 디렉터리로 하여 sklearn 1.7.2 환경에서 실행.\nfrom pathlib import Path\nimport sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, str(Path('src').resolve()))\nimport contextlib, io, itertools, json, tempfile, warnings\nfrom unittest.mock import patch\nimport numpy as np\nimport pandas as pd\nfrom scipy.stats import spearmanr\nimport config, azimuth, eda_size, external_check, external_radial\nimport transfer_size, confound_size, feature_table, model8\nimport w6_checks, w6_impact, order_seed\nwarnings.filterwarnings('ignore', category=RuntimeWarning)\n\ndef auc_copy():\n    a = np.array([1., 1.])\n    return {'unfixed': eda_size.mannwhitney_auc(a, a), 'fixed': azimuth.auc(a, a)}\n\nobserved = auc_copy()\nprint(json.dumps(observed, ensure_ascii=False, indent=2))\nassert observed == {'unfixed': 0.0, 'fixed': 0.5}\n",
+      "observed": "[1,1] 대 [1,1]: eda_size.mannwhitney_auc=0.000000, 수정된 azimuth.auc=0.500000. 제공 CSV의 Edge-Ring 대 Edge-Loc map_size: 0.7804539442144779 → 0.7805649048607273; 소수 셋째 자리 표시는 0.780 → 0.781.",
+      "frequency": "features.csv에서 클래스 간 동일 크기 쌍 151,581 / 50,229,520쌍(약 0.302%). 실제 14,869행으로 위 AUC 차이를 재계산했다.",
+      "blast_radius": "eda_size.py Q1의 맵 크기 AUC와 해당 도표. 크기 분포가 다르다는 분기(|AUC−0.5|≥0.10)는 유지된다. 최종 6종 macro-F1과 초록 0.313은 이 복제 함수를 사용하지 않는다.",
+      "fix": "독립 복제 함수를 수정된 azimuth.auc로 통일한다. 이것은 수정된 azimuth.auc의 재지적이 아니라 남은 별도 호출 경로다.",
+      "severity": "low"
+    },
+    {
+      "id": 3,
+      "kind": "tie",
+      "evidence_file": "src/order_seed.py",
+      "line": 83,
+      "code_quote": "            ok = len(set(wins)) == 1",
+      "symptom": "추가한 감소량·마진 경고가 stable/per_P/verdict에 반영되지 않아, 경고한 조건을 마지막에는 순서 무관으로 확정한다.",
+      "trigger": "세 seed에서 동일한 사전식 승자가 나오지만 최대 감소량≤0 또는 동점인 조건.",
+      "repro_code": "# ai_review_kit_3차 폴더를 작업 디렉터리로 하여 sklearn 1.7.2 환경에서 실행.\nfrom pathlib import Path\nimport sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, str(Path('src').resolve()))\nimport contextlib, io, itertools, json, tempfile, warnings\nfrom unittest.mock import patch\nimport numpy as np\nimport pandas as pd\nfrom scipy.stats import spearmanr\nimport config, azimuth, eda_size, external_check, external_radial\nimport transfer_size, confound_size, feature_table, model8\nimport w6_checks, w6_impact, order_seed\nwarnings.filterwarnings('ignore', category=RuntimeWarning)\n\ndef verdict_guard():\n    # Execute the original main() and its final decision, replacing only expensive inputs.\n    class FakeFile(dict):\n        def __enter__(self): return self\n        def __exit__(self, *args): return False\n    n = 16\n    y = np.array(config.PATTERN_CLASSES * 2)\n    def fake_load(path, **kw):\n        return FakeFile(cls=y, folds=np.tile(np.arange(n) % 2, (3,1)), seeds=np.arange(3),\n                        cov=np.zeros(n), ctr=np.zeros(n), cv=np.zeros(n),\n                        radial_contrast=np.zeros(n), mid_peak=np.zeros(n), cc_compact=np.zeros(n))\n    output = io.StringIO()\n    with patch.object(order_seed.np, 'load', side_effect=fake_load), \\\n         patch.object(order_seed, 'oof', side_effect=lambda X, yy, folds: yy.copy()), \\\n         contextlib.redirect_stdout(output):\n        order_seed.main()\n    out = output.getvalue()\n    return {'max_decrease': 0., 'margin': 0.,\n            'nonpositive_warnings': out.count('❌ 감소량 ≤ 0'),\n            'final_independent_families': out.rsplit('★ 사전 등록 판정',1)[1].count('ⓑ 순서 무관'),\n            'output': out}\n\nobserved = verdict_guard()\nprint(json.dumps(observed, ensure_ascii=False, indent=2))\nassert observed['nonpositive_warnings'] == 9\nassert observed['final_independent_families'] == 3\n",
+      "observed": "원본 main()의 모든 부분집합에 같은 정답 예측을 주면 최대 감소량=0, 마진=0. 감소량≤0 경고는 9회 출력하지만 최종 판정은 E/R/S 3개 모두 ⓑ 순서 무관이다. 비싼 OOF 계산만 대역으로 바꾸고 수정된 판정 본문 전체를 실행했다.",
+      "frequency": "합성 입력 9/9 선행 조건에서 재현. 실데이터 최종 판정 재실행은 미측정. D-026에 기록된 R|E 마진 0.0016/0.0020/0.0073도 같은 경고 전용 경로를 거치지만, 이는 문서 기록이며 이번 실측이 아니다.",
+      "blast_radius": "order_seed.py 최종 판정과 향후 이 출력을 인용하는 순서 무관 주장. 기존 max 자체의 기지 결함을 반복한 것이 아니라 수정 후에도 남은 경고→판정 연결 누락이다. 분류 예측 및 macro-F1은 바뀌지 않는다.",
+      "fix": "승자 안정성과 감소량/동점의 유효성을 따로 보관하고, 유효하지 않은 조건은 per_P에 승자를 넣지 않아 최종 판정을 판정 불가로 만든다. 새 임의 마진을 추가하지 말고 D-026의 불확실성 측정 전에는 확정을 보류한다.",
+      "severity": "medium"
+    },
+    {
+      "id": 4,
+      "kind": "tie",
+      "evidence_file": "src/transfer_size.py",
+      "line": 85,
+      "code_quote": "            if j > best:",
+      "symptom": "Youden J가 같은 임계값 중 순회상 첫 값만 선택하여 특징 부호를 뒤집어 같은 문제를 표현하면 전이 예측이 달라진다.",
+      "trigger": "훈련값 사이 공백이나 반복값 때문에 여러 (threshold, sign)가 같은 최대 J를 달성할 때.",
+      "repro_code": "# ai_review_kit_3차 폴더를 작업 디렉터리로 하여 sklearn 1.7.2 환경에서 실행.\nfrom pathlib import Path\nimport sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, str(Path('src').resolve()))\nimport contextlib, io, itertools, json, tempfile, warnings\nfrom unittest.mock import patch\nimport numpy as np\nimport pandas as pd\nfrom scipy.stats import spearmanr\nimport config, azimuth, eda_size, external_check, external_radial\nimport transfer_size, confound_size, feature_table, model8\nimport w6_checks, w6_impact, order_seed\nwarnings.filterwarnings('ignore', category=RuntimeWarning)\n\ndef threshold_ties():\n    x = np.repeat([0., 2.], 10)\n    y = np.repeat([0, 1], 10)\n    target = np.array([.5, 1.5])\n    truth = np.array([0, 1])\n    ans = []\n    for direction in (1, -1):\n        t, s = transfer_size.fit_threshold(direction*x, y)\n        ans.append({'axis': direction, 'threshold': t, 'sign': s,\n                    'train_ba': transfer_size.balanced_acc(direction*x, y, t, s),\n                    'target_pred': ((s*direction*target) >= s*t).astype(int).tolist(),\n                    'target_ba': transfer_size.balanced_acc(direction*target, truth, t, s)})\n    return ans\n\nobserved = threshold_ties()\nprint(json.dumps(observed, ensure_ascii=False, indent=2))\nassert all(v['train_ba']==1.0 for v in observed)\nassert observed[0]['target_pred']==[1,1] and observed[1]['target_pred']==[0,0]\n",
+      "observed": "train x=[0×10,2×10], y=[0×10,1×10]: threshold=0.05959595959595987, sign=+1. x를 −x로 표현하면 threshold=−2.0, sign=−1. 훈련 balanced accuracy는 둘 다 1.0인데 target 원좌표 [0.5,1.5] 예측은 [1,1] → [0,0]으로 2/2 바뀐다. 해당 target의 balanced accuracy는 둘 다 0.5이므로 성능 하락으로 과장하지 않는다.",
+      "frequency": "제공 CSV 정밀도에서 Edge-Ring↔Edge-Loc 3특징×3seed×5fold×4층=180회: 정확 최대 J 동점은 coverage 1/60, n_fail 6/60, edge_contrast 0/60. 그 7회에서 제공 test 행의 예측을 바꾸는 동점은 0회. 원본 전체 정밀도 캐시 및 F1a/r_shift 전이의 빈도는 미측정.",
+      "blast_radius": "transfer_size.py 및 이를 가져오는 transfer_radial.py/radial_equal.py의 전이 임계값. 이번 측정 범위에서 기존 0.036/0.176 전이 손실이 바뀐다는 근거는 없다.",
+      "fix": "훈련 결정 구간과 동점 집합을 명시적으로 보존한다. 같은 훈련 분할을 만드는 공백은 중점으로 대표하고, 서로 다른 최적 분할이 동점이면 사전에 정한 규칙이나 전체 최적 집합의 전이 범위를 보고한다. test 성능으로 동점을 깨지 않는다.",
+      "severity": "low",
+      "related_files": [
+        "src/transfer_radial.py:37",
+        "src/radial_equal.py:42"
+      ]
+    },
+    {
+      "id": 5,
+      "kind": "degenerate",
+      "evidence_file": "src/w6_impact.py",
+      "line": 142,
+      "code_quote": "    ok = worst <= TOL and nan_mm == 0",
+      "symptom": "유한 특징값을 한 번도 비교하지 못해도 최대 오차의 초기값 0으로 불변성 검사를 합격시킨다.",
+      "trigger": "대상 표본의 해당 특징이 모든 변환에서 NaN인 경우. 예: 불량 die가 없는 정당한 맵에서 cc_compact/circ_var.",
+      "repro_code": "# ai_review_kit_3차 폴더를 작업 디렉터리로 하여 sklearn 1.7.2 환경에서 실행.\nfrom pathlib import Path\nimport sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, str(Path('src').resolve()))\nimport contextlib, io, itertools, json, tempfile, warnings\nfrom unittest.mock import patch\nimport numpy as np\nimport pandas as pd\nfrom scipy.stats import spearmanr\nimport config, azimuth, eda_size, external_check, external_radial\nimport transfer_size, confound_size, feature_table, model8\nimport w6_checks, w6_impact, order_seed\nwarnings.filterwarnings('ignore', category=RuntimeWarning)\n\ndef invariance_empty():\n    maps = [np.ones((7, 9), dtype=np.uint8)]\n    output = io.StringIO()\n    with contextlib.redirect_stdout(output):\n        result = w6_impact.invariance_of(\n            lambda m: w6_impact.cc_variant(m, mode='nan'), maps, [0], 'no failures')\n        full = w6_checks.check_invariance(maps, np.array(['Center']))\n    return {'finite_cc': 0, 'pass': bool(result), 'full_failed_features': int(full['n_fail']),\n            'output': output.getvalue()}\n\nobserved = invariance_empty()\nprint(json.dumps(observed, ensure_ascii=False, indent=2))\nassert observed['finite_cc']==0 and observed['pass'] is True\nassert observed['full_failed_features']==0\n",
+      "observed": "7×9 정상 die 맵 1장: 수정된 cc_compact의 유한 비교 0건인데 invariance_of=True. check_invariance도 circ_var/cc_compact 전부 NaN인 채 불합격 특징 0/6, 6종 불변성 합격을 출력한다. NaN 반환 자체는 정상 방어이며 결함은 검사기의 판정이다.",
+      "frequency": "제공 480장 전체에서는 이 퇴화 미발동: 원판 유한값 수 [480,480,470,480,480,480], 수정 cc 유한값 477/480. 합성 정상 맵 1건에서 재현.",
+      "blast_radius": "w6_impact.py의 후보 채택 gate와 w6_checks.py 합격 출력. 기존 480장 검사가 통째로 무효라는 뜻은 아니며, 수정안이 결측만 반환해도 gate를 우회할 수 있다는 결함이다.",
+      "fix": "특징별 유한 비교 수를 별도 집계하여 0이면 판정 불가를 반환한다. NaN 패턴의 일치와 유한값 불변성은 별도 검사로 보고하고, 후보 채택 시 계산 가능 범위도 확인한다.",
+      "severity": "medium",
+      "related_files": [
+        "src/w6_checks.py:195",
+        "src/w6_checks.py:220"
+      ]
+    },
+    {
+      "id": 6,
+      "kind": "order",
+      "evidence_file": "src/model8.py",
+      "line": 43,
+      "code_quote": "    if CACHE.exists():\n        with np.load(CACHE, allow_pickle=True) as z:\n            return {k: z[k] for k in z.keys()}",
+      "symptom": "특징 캐시가 요청한 웨이퍼 순서·부분집합을 확인하지 않아 이전 호출의 행 배열을 그대로 돌려준다.",
+      "trigger": "build_features(cls_order, idx_order) 또는 같은 구조의 build를 다른 순서/부분집합으로 다시 호출하면서 기존 캐시가 존재할 때.",
+      "repro_code": "# ai_review_kit_3차 폴더를 작업 디렉터리로 하여 sklearn 1.7.2 환경에서 실행.\nfrom pathlib import Path\nimport sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, str(Path('src').resolve()))\nimport contextlib, io, itertools, json, tempfile, warnings\nfrom unittest.mock import patch\nimport numpy as np\nimport pandas as pd\nfrom scipy.stats import spearmanr\nimport config, azimuth, eda_size, external_check, external_radial\nimport transfer_size, confound_size, feature_table, model8\nimport w6_checks, w6_impact, order_seed\nwarnings.filterwarnings('ignore', category=RuntimeWarning)\n\ndef cached_order():\n    a = np.ones((9, 9), dtype=np.uint8)\n    b = np.full((9, 9), 2, dtype=np.uint8)\n    maps = np.empty(2, dtype=object)\n    maps[:] = [a, b]\n    with tempfile.TemporaryDirectory() as td:\n        td = Path(td)\n        np.savez(td / 'Center.npz', wafer_maps=maps)\n        with patch.object(config, 'DATA_PROCESSED', td), \\\n             patch.object(config, 'PATTERN_CLASSES', ['Center']), \\\n             patch.object(model8, 'CACHE', td / 'cache.npz'), \\\n             contextlib.redirect_stdout(io.StringIO()):\n            first = model8.build_features(['Center', 'Center'], [0, 1])['cov']\n            second = model8.build_features(['Center', 'Center'], [1, 0])['cov']\n            shorter = model8.build_features(['Center'], [1])['cov']\n    return {'first': first.tolist(), 'reordered_actual': second.tolist(),\n            'reordered_expected': first[::-1].tolist(),\n            'requested_rows': 1, 'returned_rows': len(shorter)}\n\nobserved = cached_order()\nprint(json.dumps(observed, ensure_ascii=False, indent=2))\nassert observed['reordered_actual'] != observed['reordered_expected']\nassert observed['returned_rows'] != observed['requested_rows']\n",
+      "observed": "9×9 정상 맵과 전불량 맵의 coverage를 [0,1] 순서로 캐시하면 [0.0,1.0]. 요청을 [1,0]으로 바꿔도 실제 [0.0,1.0], 기대 [1.0,0.0]. 1행만 요청해도 2행을 반환한다. 임시 디렉터리에서 원본 build_features를 실제 실행했다.",
+      "frequency": "합성 2장 중 재정렬 후 2/2 행 불일치. 제공 kit에 기존 processed 캐시가 없으므로 역사적 발생 빈도는 미측정. 현재 정규 순서를 유지한 보고값이 오염됐다는 증거는 없다.",
+      "blast_radius": "순서가 달라지는 재생성/부분집합 실행 시 특징과 라벨·fold의 결합이 어긋나므로 후속 모든 모델의 수치가 영향받을 수 있다. 기존 결과의 실제 변경량은 미측정.",
+      "fix": "캐시에 (cls, idx_in_cls) 식별자를 저장하고 요청과 일치하는지 검증하거나 식별자로 재정렬한다. 길이가 같다는 검사만으로는 순서 오류를 막지 못한다.",
+      "severity": "medium",
+      "related_files": [
+        "src/radial.py:124",
+        "src/shape2.py:83",
+        "src/shape_feats.py:108",
+        "src/radial_equal.py:72",
+        "src/transfer_radial.py:45"
+      ]
+    },
+    {
+      "id": 7,
+      "kind": "boundary",
+      "evidence_file": "src/confound_size.py",
+      "line": 48,
+      "code_quote": "        p = pos[(pos_key >= lo) & (pos_key < hi)]",
+      "symptom": "표본 최댓값을 마지막 상한으로 두고 모든 구간을 반열림으로 처리하여 최대 크기 웨이퍼를 층화 비교에서 누락한다.",
+      "trigger": "edges[-1]가 관측 최댓값인 percentile/quantile 경계. 모든 크기가 같으면 경계 중복까지 생겨 전체가 빠질 수 있다.",
+      "repro_code": "# ai_review_kit_3차 폴더를 작업 디렉터리로 하여 sklearn 1.7.2 환경에서 실행.\nfrom pathlib import Path\nimport sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, str(Path('src').resolve()))\nimport contextlib, io, itertools, json, tempfile, warnings\nfrom unittest.mock import patch\nimport numpy as np\nimport pandas as pd\nfrom scipy.stats import spearmanr\nimport config, azimuth, eda_size, external_check, external_radial\nimport transfer_size, confound_size, feature_table, model8\nimport w6_checks, w6_impact, order_seed\nwarnings.filterwarnings('ignore', category=RuntimeWarning)\n\ndef upper_boundary():\n    values = np.r_[np.zeros(30), np.ones(30)]\n    sizes = np.r_[np.ones(30), np.full(30, 2.)]\n    rows, score = confound_size.strat_auc(values, values, sizes, sizes, [1., 2.])\n    fixed_rows, fixed_score = confound_size.strat_auc(values, values, sizes, sizes, [1., np.inf])\n    return {'input_per_class': 60, 'included_per_class': rows[0][2],\n            'closed_last_included': fixed_rows[0][2], 'score': score, 'fixed_score': fixed_score}\n\nobserved = upper_boundary()\nprint(json.dumps(observed, ensure_ascii=False, indent=2))\nassert observed['included_per_class']==30\nassert observed['closed_last_included']==60\n",
+      "observed": "각 클래스 크기 [1×30,2×30], 경계 [1,2]: 60장 중 30장만 포함. 마지막 상한을 +∞로 바꾸면 60장 포함. AUC는 이 반례에서 0.5로 동일하므로 재현한 결함은 50% 표본 누락이다.",
+      "frequency": "features.csv의 Edge-Ring↔Edge-Loc 14,869장에 같은 유효 die 층화 규칙 적용 시 최대 크기 22,372인 2장 누락. confound_size는 폐기 반경 밴드의 edge_n을 사용하므로 그 파일의 전수 누락 수는 미측정. cap 표본 실행의 정확 누락 빈도도 별개다.",
+      "blast_radius": "confound_size의 층화 AUC, edge_band/feature_table의 크기별 비교표. transfer_size/transfer_radial/radial_equal의 전이 실험은 양끝을 ±∞로 바꾸므로 이 결함 대상이 아니다. 최종 RF의 전수 평가와도 무관하다.",
+      "fix": "마지막 구간에 최댓값을 포함하거나 마지막 상한을 +∞로 두고 경계 중복을 정리한다. 각 입력 행이 정확히 한 구간에 들어갔는지 검증한다.",
+      "severity": "low",
+      "related_files": [
+        "src/confound_size.py:103",
+        "src/edge_band.py:201",
+        "src/edge_band.py:205",
+        "src/feature_table.py:195",
+        "src/feature_table.py:208"
+      ]
+    },
+    {
+      "id": 8,
+      "kind": "order",
+      "evidence_file": "src/w6_impact.py",
+      "line": 252,
+      "code_quote": "        keep[g[0]] = True                      # 그룹당 첫 장만 남긴다",
+      "symptom": "같은 맵의 라벨·lot·fold가 다른 중복 그룹에서도 첫 행을 대표로 삼아 클래스 순서가 정답 라벨과 평가 fold를 결정한다.",
+      "trigger": "완전 동일 맵 두 장이 서로 다른 클래스 또는 fold에 속할 때.",
+      "repro_code": "# ai_review_kit_3차 폴더를 작업 디렉터리로 하여 sklearn 1.7.2 환경에서 실행.\nfrom pathlib import Path\nimport sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, str(Path('src').resolve()))\nimport contextlib, io, itertools, json, tempfile, warnings\nfrom unittest.mock import patch\nimport numpy as np\nimport pandas as pd\nfrom scipy.stats import spearmanr\nimport config, azimuth, eda_size, external_check, external_radial\nimport transfer_size, confound_size, feature_table, model8\nimport w6_checks, w6_impact, order_seed\nwarnings.filterwarnings('ignore', category=RuntimeWarning)\n\ndef dedup_representative():\n    class FakeFile(dict):\n        def __enter__(self): return self\n        def __exit__(self, *args): return False\n    a = np.full((9,9),2,dtype=np.uint8)\n    y = np.array(['Center','Loc'])\n    folds = np.array([[0,1]])\n    def fake_load(path, **kw):\n        return FakeFile(cov=np.ones(2),ctr=np.ones(2),cv=np.ones(2),\n                        radial_contrast=np.ones(2),mid_peak=np.ones(2),cc_compact=np.ones(2))\n    result = []\n    for order in [np.array([0,1]),np.array([1,0])]:\n        selected = []\n        def fake_oof(X, yy, ff):\n            if len(yy)==1: selected.append({'class':str(yy[0]),'fold':int(ff[0])})\n            return yy.copy()\n        with patch.object(w6_impact.np,'load',side_effect=fake_load), \\\n             patch.object(w6_impact,'oof',side_effect=fake_oof), \\\n             contextlib.redirect_stdout(io.StringIO()):\n            w6_impact.stage_c([a.copy(),a.copy()],y[order],folds[:,order])\n        result.append(selected[0])\n    return result\n\nobserved = dedup_representative()\nprint(json.dumps(observed, ensure_ascii=False, indent=2))\nassert observed==[{'class':'Center','fold':0},{'class':'Loc','fold':1}]\n",
+      "observed": "동일 9×9 맵 2장, 라벨 [Center,Loc], fold [0,1]: stage_c가 중복 제거 후 oof에 전달하는 대표는 Center/fold0. 입력을 함께 역순으로 바꾸면 Loc/fold1. 원본 stage_c를 실행하고 파일 입력·모델 학습만 대역으로 대체해 전달값을 기록했다.",
+      "frequency": "maps_sample480.npz 실측: 중복 2그룹, 상충 라벨 0그룹. 전수 빈도는 미측정. docs/w6_checks.md §1-C/1-E의 기존 측정은 상충 라벨 3그룹(그중 Edge-Loc↔Edge-Ring 2그룹)이라고 명시하며, 이는 이번 독립 실측이 아니다.",
+      "blast_radius": "중복 제거 영향 Δ+0.0010은 현재 클래스 순서로 대표를 고른 한 경우의 측정이다. 대표 교체 후 Δ가 얼마나 바뀌는지는 미측정. 중복 미제거 본판 macro-F1에는 영향 없다.",
+      "fix": "라벨 충돌 그룹은 정상 중복과 분리해 보류/제외 규칙을 먼저 정한다. 같은 라벨이라도 대표의 안정 식별자와 fold 처리 정책을 명시하고, 대표를 바꾼 대조 또는 중복 그룹 전체를 유지한 분할 대조로 민감도를 확인한다.",
+      "severity": "medium"
+    }
+  ],
+  "checked_but_clean": [
+    {
+      "file": "src/azimuth.py",
+      "what_i_checked": "수정된 AUC 평균 순위, 빈 클래스 NaN, polar_coords의 빈 유효영역·축 길이 0 방어.",
+      "why_safe": "공용 AUC의 완전 동점은 0.5로 재현했다. 각도 bin의 알려진 회전 문제는 신규 지적으로 세지 않았다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/config.py",
+      "what_i_checked": "상수, 클래스 순서, 난수 seed 정의.",
+      "why_safe": "SEED=44와 클래스 순서가 명시돼 있다. 설정 자체가 임의 승자를 계산하지 않는다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/confound_size.py",
+      "what_i_checked": "층화 표본 부족·NaN 필터와 집계 분모.",
+      "why_safe": "표본<30인 셀은 NaN, 유효 가중치가 0이면 pooled AUC는 NaN이다. 마지막 상한 누락은 #7로 분리했다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        7
+      ]
+    },
+    {
+      "file": "src/eda_size.py",
+      "what_i_checked": "크기 구간 digitize, 빈 유효영역 통계, AUC 복제 경로.",
+      "why_safe": "고정 크기 구간은 digitize로 경계마다 한 구간에 배정한다. AUC 동점 결함은 #2다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        2
+      ]
+    },
+    {
+      "file": "src/edge_band.py",
+      "what_i_checked": "침식 층의 완전 분할, 빈 밴드, MIN_FAIL, 밴드 빈도 가중 분모.",
+      "why_safe": "480장+합성6건에서 층 마스크 합이 유효영역과 정확히 일치했다. 실패점 bin은 자기 자신을 포함해 분모가 0이 아니다. 기지 CV 불변성 결함과 #7은 별도다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        7
+      ]
+    },
+    {
+      "file": "src/edge_contrast.py",
+      "what_i_checked": "빈 내부층 NaN, alpha=1 평활, 정상/전불량·선/점 입력의 D4 변환.",
+      "why_safe": "기본 설정은 분모를 평활하고 내부층이 없으면 NaN이다. coverage·F1a·F1b와 함께 486건×8변환에서 유한값과 NaN 패턴 일치.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/explore.py",
+      "what_i_checked": "클래스 0개·1개, 표본이 화면 슬롯보다 적을 때, RNG 초기화.",
+      "why_safe": "빈 데이터는 명시 중단, 부족한 슬롯은 숨기며 표집은 seed44다. 그림 표본의 호출 순서 의존을 분류 수치 오류로 세지 않았다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/external_check.py",
+      "what_i_checked": "고정 모델 seed, 명시 labels, 혼동률 분모와 Spearman.",
+      "why_safe": "상수 클래스 집합에서 혼동률 산술은 명확하다. 평균 순위를 쓰지 않는 Spearman은 #1. 원자료가 없는 외부 모델 전체 실행은 하지 않았다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        1
+      ]
+    },
+    {
+      "file": "src/external_radial.py",
+      "what_i_checked": "OOF 위치 기록, 고정 seed, 클래스 순서와 순위 계산.",
+      "why_safe": "각 fold의 te 위치에만 예측을 기록한다. 순위 결함은 #1이며 0.887 영향량은 미측정이다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        1
+      ]
+    },
+    {
+      "file": "src/feature_table.py",
+      "what_i_checked": "F 내 특징 행 정렬, cvn RNG, 표본 부족 guard, 비교 마스크.",
+      "why_safe": "F[c] 안의 cov/ctr/cv/nfb는 같은 maps로 계산된다. 별도로 다시 뽑은 nf만 #9의 문제이고 마지막 상한은 #7이다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        7,
+        9
+      ]
+    },
+    {
+      "file": "src/fig_bottleneck.py",
+      "what_i_checked": "OOF 행, SHOW 순서, 데이터에 따른 라벨 배치와 그림 치수.",
+      "why_safe": "동일 끝점의 라벨 배치 순서는 도표 위치만 바꾸며 저장되는 rates 수치는 바꾸지 않는다. 그래프 전체 재학습/렌더는 이번 범위에서 하지 않았다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/load_data.py",
+      "what_i_checked": "중첩 라벨의 빈 배열, 두 분할 컬럼 철자, 클래스별 데이터 순서.",
+      "why_safe": "빈 라벨은 None, 분할 컬럼 부재는 중단한다. 공식 단일 라벨 배열의 첫 원소 추출은 최빈값 동점 선택이 아니다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/model8.py",
+      "what_i_checked": "OOF 위치, 명시 seed·labels, 캐시와 식별자.",
+      "why_safe": "각 fold 예측은 입력 행 위치를 유지한다. 캐시 순서/부분집합 무시는 #6이며 파일 전체가 안전하다는 뜻은 아니다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        6
+      ]
+    },
+    {
+      "file": "src/model8_final.py",
+      "what_i_checked": "OOF 전수 배정과 train/test 제외, labels 고정, 분모와 headroom guard.",
+      "why_safe": "제공 CSV의 8종 지원이 모두 양수라 보고용 쌍 분모는 0이 아니다. headroom≤1e−6는 NaN. 캐시 입력의 상위 위험 #6은 공유한다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/model8_radial.py",
+      "what_i_checked": "특징 묶음의 고정 열 순서, OOF와 쌍률 산술.",
+      "why_safe": "SETS 열 순서는 명시돼 있고 OOF te 위치를 보존한다. 8종 전체 평가에서는 쌍 분모가 양수다. 상위 캐시 위험 #6은 공유한다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/model8_size.py",
+      "what_i_checked": "흡수율 0분모 처리, scipy 순위 상관, 모델 RNG, 외부 반복.",
+      "why_safe": "흡수율의 기초 증분이 0이면 NaN, scipy.spearmanr는 평균 순위를 쓴다. 외부 모델은 random_state=0/1/2가 명시돼 있다. 상위 캐시 위험 #6은 공유한다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/none_sanity.py",
+      "what_i_checked": "순열이 같은 밴드·같은 nf를 유지하는지, nf 하한, 가중치 분모.",
+      "why_safe": "replace=False로 같은 밴드에서 nf개를 뽑고 nf<12는 제외한다. bin 경계는 이미 알려진 문제다. 난수 스트림 순서에 따른 Monte Carlo 변동 자체를 결정적 버그로 세지 않았다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/order_dep.py",
+      "what_i_checked": "부분집합 키 frozenset, 고정 열 순서, 구버전 판정과 쌍률.",
+      "why_safe": "키 순회가 특징 열을 재배열하지 않고 FAM 순서로 열을 만든다. TIE=0.005 판정은 문서에서 폐기됐으므로 새 지적으로 반복하지 않았다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/order_seed.py",
+      "what_i_checked": "경고·승자·stable·최종 verdict 전체 흐름.",
+      "why_safe": "OOF는 고정 seed이고 8종 쌍률은 계산 가능하다. 경고와 최종 판정의 모순은 #3으로 실제 main 실행 확인했다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        3
+      ]
+    },
+    {
+      "file": "src/radial.py",
+      "what_i_checked": "r1/r2 반열림 분할, rate의 빈 구간, max(inn,out) 동점, D4.",
+      "why_safe": "max가 동일한 수치 둘 중 하나를 골라도 반환 수치는 같다. 빈 구간은 NaN이며 486건 D4 불변성 확인. 캐시는 #6이다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        6
+      ]
+    },
+    {
+      "file": "src/radial_equal.py",
+      "what_i_checked": "등면적 구간의 비중복, 빈 구간 NaN, 전이 경계 ±∞.",
+      "why_safe": "min(ns)==0이면 NaN이고 전이의 최댓값은 포함된다. 캐시는 #6, 공유 임계값 동점은 #4다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        4,
+        6
+      ]
+    },
+    {
+      "file": "src/shape2.py",
+      "what_i_checked": "총불량<3/>4000, 성분0개·작은 최대성분, 알려진 동점과 캐시.",
+      "why_safe": "작은/빈 입력은 NaN 방어가 있다. 원판의 성분/PCA 동점은 D-024/025에 알려져 적용 연기된 것이므로 신규 지적으로 반복하지 않았다. 캐시만 #6이다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        6
+      ]
+    },
+    {
+      "file": "src/shape_feats.py",
+      "what_i_checked": "4이웃 DFS, 방문 집합, 최대 성분 크기 동점, PCA 고유값만 사용하는 점.",
+      "why_safe": "486건에서 성분 크기 목록을 scipy 4이웃 결과와 대조해 일치했다. max(sz)는 크기만 반환하므로 동점 성분의 위치가 값에 안 실린다. 캐시는 #6이다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        6
+      ]
+    },
+    {
+      "file": "src/split.py",
+      "what_i_checked": "lot 무결성, fold 저장 순서, seed 명시와 클래스 지원.",
+      "why_safe": "제공 25,519행에서 seed0/1/2 모두 lot별 fold가 정확히 하나다. make_folds의 고정 seed와 입력 위치 기록을 확인했다. 분할 정책을 재설계하지 않았다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/transfer_radial.py",
+      "what_i_checked": "층 경계는 train에서만 계산, 양끝 ±∞, 희소 클래스 guard.",
+      "why_safe": "train/test에서 두 클래스가 없는 셀은 계산을 건너뛴다. 마지막 크기 포함은 안전하며 캐시 #6과 임계값 #4만 공유한다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        4,
+        6
+      ]
+    },
+    {
+      "file": "src/transfer_size.py",
+      "what_i_checked": "NaN 필터, 단일 클래스 guard, train 전용 분위수, threshold 양방향 탐색.",
+      "why_safe": "한 클래스/<20개 훈련은 NaN으로 처리한다. 크기 양끝은 ±∞. 동점 임계값의 표현 의존성은 #4로 한정했다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        4
+      ]
+    },
+    {
+      "file": "src/verify_coverage.py",
+      "what_i_checked": "동일 lot 쌍에서 자기쌍 제거, finite coverage 필터, 그림용 정렬.",
+      "why_safe": "같은 lot 비교의 동일 인덱스 쌍은 제거된다. 그림용 상하위 동점 선택은 그림 표본만 정하며 수치 재계산에는 피드백되지 않는다. 표본 쌍 추출은 Monte Carlo 방식이다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/verify_review.py",
+      "what_i_checked": "exact/norm/MISS 분기와 빈 인용.",
+      "why_safe": "find(빈 문자열)는 MISS다. 이 파일은 기존 1/2차 스키마용이므로 3차 결과 검증은 별도 독립 검증기로 수행했다.",
+      "status": "no_additional_finding_in_checked_scope",
+      "related_finding_ids": []
+    },
+    {
+      "file": "src/w6_checks.py",
+      "what_i_checked": "D4 변환, 마스크, hash shape 포함, NaN 비교와 finite 비교.",
+      "why_safe": "중복 hash에는 shape가 포함돼 배열 형상 충돌을 피한다. 유한 비교 0건의 합격은 #5이고 현재 480장에서는 특징별 유한 비교가 존재한다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        5
+      ]
+    },
+    {
+      "file": "src/w6_impact.py",
+      "what_i_checked": "수정 cc의 성분/PCA 동점 NaN, D4, gate 및 중복 대표.",
+      "why_safe": "수정 cc는 480장+합성6건에서 NaN 패턴 포함 D4 일치했다. 검사 gate #5와 중복 대표 #8은 별도 결함이다.",
+      "status": "findings_present",
+      "related_finding_ids": [
+        5,
+        8
+      ]
+    }
+  ],
+  "out_of_class": [
+    {
+      "id": 9,
+      "evidence_file": "src/feature_table.py",
+      "line": 211,
+      "code_quote": "        an = auc(nf[b][sel[b]], nf[a][sel[a]])",
+      "problem": "F를 만들 때는 여러 클래스가 공유하는 RNG로 표집하지만 nf는 클래스마다 seed를 재설정해 재표집한다. F의 size로 만든 행 마스크를 다른 웨이퍼의 nf에 적용하여 크기 통제 대조 자체가 깨진다.",
+      "trigger": "cap=2500으로 클래스 표집이 발생하는 실제 주 실행. F 이전에 Center 표집이 RNG를 소비하고 Edge-Loc/Edge-Ring에서도 호출 순서가 누적된다.",
+      "repro_code": "# ai_review_kit_3차 폴더를 작업 디렉터리로 하여 sklearn 1.7.2 환경에서 실행.\nfrom pathlib import Path\nimport sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, str(Path('src').resolve()))\nimport contextlib, io, itertools, json, tempfile, warnings\nfrom unittest.mock import patch\nimport numpy as np\nimport pandas as pd\nfrom scipy.stats import spearmanr\nimport config, azimuth, eda_size, external_check, external_radial\nimport transfer_size, confound_size, feature_table, model8\nimport w6_checks, w6_impact, order_seed\nwarnings.filterwarnings('ignore', category=RuntimeWarning)\n\ndef sampled_row_alignment(df):\n    counts = df['cls'].value_counts().to_dict()\n    # load() is the original implementation. The in-memory file stand-in holds wafer IDs.\n    class FakeFile(dict):\n        def __enter__(self): return self\n        def __exit__(self, *args): return False\n    def fake_load(path, **kw):\n        c = Path(path).stem\n        return FakeFile(wafer_maps=np.arange(counts[c]))\n    rng = np.random.default_rng(config.SEED)\n    with patch.object(feature_table.np, 'load', side_effect=fake_load):\n        sampled = {c: feature_table.load(c, rng=rng) for c in config.PATTERN_CLASSES}\n        count_sample = {c: feature_table.load(c, rng=np.random.default_rng(config.SEED))\n                        for c in ('Edge-Loc', 'Edge-Ring')}\n    mismatch = {c: int((sampled[c] != count_sample[c]).sum()) for c in count_sample}\n    # features.csv retains the original per-class row order used by load().\n    F = {c: df[df.cls == c].reset_index(drop=True) for c in count_sample}\n    sizes = {c: F[c].map_size.to_numpy()[sampled[c]] for c in F}\n    aligned = {c: F[c].n_fail.to_numpy()[sampled[c]] for c in F}\n    wrong = {c: F[c].n_fail.to_numpy()[count_sample[c]] for c in F}\n    edges = np.percentile(np.r_[sizes['Edge-Loc'], sizes['Edge-Ring']], [0,25,50,75,100])\n    rows = []\n    for lo, hi in zip(edges[:-1], edges[1:]):\n        mask = {c: (sizes[c] >= lo) & (sizes[c] < hi) for c in F}\n        rows.append({'lo': lo, 'hi': hi,\n                     'unaligned_auc': azimuth.auc(wrong['Edge-Ring'][mask['Edge-Ring']], wrong['Edge-Loc'][mask['Edge-Loc']]),\n                     'aligned_auc': azimuth.auc(aligned['Edge-Ring'][mask['Edge-Ring']], aligned['Edge-Loc'][mask['Edge-Loc']])})\n    return {'mismatch': mismatch, 'rows_per_class': 2500, 'strata': rows,\n            'identity_assumption': 'features.csv is ordered by original class-local wafer order, as exported idx indicates'}\n\nobserved = sampled_row_alignment(pd.read_csv('data/features.csv'))\nprint(json.dumps(observed, ensure_ascii=False, indent=2))\nassert observed['mismatch']=={'Edge-Loc':2497,'Edge-Ring':2500}\nassert observed['strata'][0]['unaligned_auc']-observed['strata'][0]['aligned_auc'] > .15\n",
+      "observed": "클래스당 2500행 중 Edge-Loc 2497행, Edge-Ring 2500행이 서로 다른 원 웨이퍼를 가리킨다(합계 4997/5000). 같은 CSV에서 최저 크기 구간 [477,845)의 개수 단독 AUC는 현재 잘못 연결한 방식 0.9777338909541512, 올바른 동일 행 대응 0.8242775269959285. 나머지 3구간은 검증 로그에 모두 저장했다.",
+      "frequency": "features.csv 클래스별 행 수와 원본 load()의 난수 경로를 사용하여 ID 불일치 4997/5000 실측. CSV idx가 0..25518 연속임을 확인했고 sample480의 idx→cls 및 n_fail 대응도 480/480 일치했다. 원본 클래스별 npz가 kit에 없어 load 입력은 동일 길이의 웨이퍼 ID 배열로 대체했으며 AUC는 제공 CSV의 실제 n_fail/map_size로 계산했다.",
+      "blast_radius": "feature_table.py [4]의 크기별 개수 단독 AUC와 coverage−개수 비교. D-010/w2_metric_set에서 이 표를 인용한 근거는 재검토 대상이다. transfer_size.py의 별도 전이 실험과 model8_final.py의 최종 macro-F1을 무효화하지 않는다.",
+      "fix": "이미 같은 F 안에서 계산해 둔 F[c][\"nfb\"]를 사용하고 nf를 다시 표집하지 않는다. 필요하면 맵 ID를 함께 보관해 특징·마스크·대조값의 행 일치를 검사한다.",
+      "severity": "high",
+      "related_files": [
+        "src/feature_table.py:93",
+        "src/feature_table.py:100",
+        "src/feature_table.py:183",
+        "src/feature_table.py:185"
+      ]
+    }
+  ],
+  "first_question": "동점 또는 미정의 상태를 알리는 경고가 출력될 때, 그 경고를 무시한 확정 판정이 뒤에서 다시 생성되지 않는지 어떤 자동 검사로 보장하고 있나요?",
+  "files_read": [
+    "src/azimuth.py",
+    "src/config.py",
+    "src/confound_size.py",
+    "src/eda_size.py",
+    "src/edge_band.py",
+    "src/edge_contrast.py",
+    "src/explore.py",
+    "src/external_check.py",
+    "src/external_radial.py",
+    "src/feature_table.py",
+    "src/fig_bottleneck.py",
+    "src/load_data.py",
+    "src/model8.py",
+    "src/model8_final.py",
+    "src/model8_radial.py",
+    "src/model8_size.py",
+    "src/none_sanity.py",
+    "src/order_dep.py",
+    "src/order_seed.py",
+    "src/radial.py",
+    "src/radial_equal.py",
+    "src/shape2.py",
+    "src/shape_feats.py",
+    "src/split.py",
+    "src/transfer_radial.py",
+    "src/transfer_size.py",
+    "src/verify_coverage.py",
+    "src/verify_review.py",
+    "src/w6_checks.py",
+    "src/w6_impact.py",
+    "검토요청.md",
+    "docs/reproduction.md",
+    "docs/method_overview.md",
+    "docs/decisions.md",
+    "docs/w5_order.md",
+    "docs/w6_checks.md"
+  ],
+  "context_outside_kit": [
+    "../AGENTS.md",
+    "../planning/웨이퍼맵_프로젝트_로드맵_v4.6.md (진행 현황·최신 변경 이력)"
+  ],
+  "verification": {
+    "quotes_exact": 9,
+    "reproductions_passed": 9,
+    "source_files_unchanged": 30,
+    "source_sha256": {
+      "azimuth.py": "bc0341925e982f79344007f3c44cedde1fb1c02956d3bfacc62718367524747e",
+      "config.py": "a3da097e14c76b8cb9ab1cde5a47775b0699ccb56dfca9e6207064bf52692c60",
+      "confound_size.py": "29ff631594aef7bc2373c42a9a4cabb7dd6b3e872519f27e590c5c0b484ea523",
+      "eda_size.py": "f52b2f73e937727c7ae768b145e5695c7745f5d79e8c5ec0b421a1e090e034d7",
+      "edge_band.py": "21bcdf85c4e6f09c7d068f8f11ebccd674463510a399cbbdaf2ba9a5652678c9",
+      "edge_contrast.py": "c2096ae810d3e5a9a322e00def14b0d02c4b496201b76dc176bbb8f871f628cf",
+      "explore.py": "45206cf3c781132e668b0c923ca33ac1e5b3eab5111275e635002ae0c4d333f2",
+      "external_check.py": "9205450d61b0b6b9dd4bdd6fd3732ed0eab1ace22967ec26a40a36b6eecec712",
+      "external_radial.py": "d18d8a6c6cb64186d4fa98f6f0296dcbe63aacc7dfaa5bc3ec0bdb02b2472e11",
+      "feature_table.py": "546b16becf8d18f745fae999683e8601047dbc4adc54787f4610cd934637e117",
+      "fig_bottleneck.py": "ee3d5bf5921eb42b484eb620c6a44a222f095a11daa5e7506831b096cc2ffd91",
+      "load_data.py": "ce204e8df275161f8639796a9daac8866f8cc9c9cb3240ca14c2c3d6d9639567",
+      "model8.py": "39559ed3dd963c2dc48b510b67c36006f1c2c3b74a5f94a3cd69afa20f6baf99",
+      "model8_final.py": "9470a43c9fd3aaf246e70ee29eca54ba21ec0609a8006270b0ae78d630192948",
+      "model8_radial.py": "2c69709aefa5028312ecc891e9766a4acb13bdeb21358f2559677494c5cd5e1a",
+      "model8_size.py": "2183eb4c4be244be99bf2594311093af9b6b04eb8d9f553f610e59539075fca3",
+      "none_sanity.py": "991e2c25f37fe6360b012e8704ae049dd5ac67f785be5c028836618d58454681",
+      "order_dep.py": "84dd335ab9c0e1d032c3549570089a1a36f3ba5f1a779b3753cfa5d287b3f233",
+      "order_seed.py": "863a97dfb0895f6a06e0d9e96c75dc666488c758b3e9d1c89e1ab99901f94b87",
+      "radial.py": "025e218ebc574f1336ac852f834ac7bf6eefb959b70a73ef04366ea0e106c0e7",
+      "radial_equal.py": "e7f8a0408a5beb929bb6c482c2f3671569657d159e4c8a5df0a3474fe282cda4",
+      "shape2.py": "7f10a78ff38e13e1763e74b693b6a62a0e6b8ba29d68c2b6e89a288bcc4f8435",
+      "shape_feats.py": "9508a96128d138897cfca3810699b3c3a59faabbd088d83b94dc4ad34d43c4cd",
+      "split.py": "603848f8a63b7cab18930f9f7f42615d4b836f7e88ed179e2a2817f4f185ea77",
+      "transfer_radial.py": "f7a0da9bfe4129ee6f7436fdddb328775e5427258c949ad4cd6ecbab8bdb599c",
+      "transfer_size.py": "3c66dab40b0df469eba927ca1711ef3d489d513e871d52d7e1cb9b39d1f50f7e",
+      "verify_coverage.py": "38830e62e3791b5edda7161de5e2f6a5d39ed4dafdbdd936b5921db0706b13a5",
+      "verify_review.py": "80e01ae66eca9c26d4e0325006e0649cd1ae8f464e064309980417e2a07c99c7",
+      "w6_checks.py": "b851252168ff15e19a46ea3a33e319f6bcf6a2ac133af93bf75d3ecec5143e6d",
+      "w6_impact.py": "2198522df64e3c4b4c225898f2c1e5772d54074c8aeed7bea39c4861edc88a91"
+    }
+  }
+}

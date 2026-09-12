@@ -26,6 +26,7 @@ D-003의 마지막 항목:
        ③ D-011·D-012의 **증분 방향**이 유지되는가
 """
 import numpy as np
+from scipy.stats import rankdata
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score, confusion_matrix
 
@@ -51,7 +52,13 @@ def pair_rates(y, p, labels):
 
 
 def spearman(a, b):
-    ra = np.argsort(np.argsort(a)); rb = np.argsort(np.argsort(b))
+    """동점에 평균 순위를 준다. argsort().argsort()는 서수 순위라
+    동점을 입력 행 순서로 임의로 갈라, 같은 자료를 재배열하면 값이 바뀐다
+    (2026-09-12 외부 검토 #1: 1.000 -> 0.400, 정의값 0.833).
+    상수 벡터는 분산 0이라 상관이 정의되지 않는다 -> NaN."""
+    ra, rb = rankdata(a), rankdata(b)
+    if np.std(ra) == 0 or np.std(rb) == 0:
+        return float("nan")
     return float(np.corrcoef(ra, rb)[0, 1])
 
 

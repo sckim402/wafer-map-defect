@@ -9,6 +9,11 @@
 import itertools
 
 import numpy as np
+
+# 1·2위 차가 이 아래면 승자 이름을 확정하지 않는다.
+# seed 흔들림 대역(±0.01)에서 가져왔다 — 새 임의값이 아니라
+# 이미 프로젝트가 쓰던 잡음 대역이다 (D-026).
+MARGIN_MIN = 0.01
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix
 
@@ -80,7 +85,12 @@ def main():
                 wins.append(srt[0][0])
                 marg.append(srt[0][1] - srt[1][1])
                 neg |= srt[0][1] <= 0
-            ok = len(set(wins)) == 1
+            # 승자 이름의 안정성과, 그 승자가 유효한지를 **따로** 본다.
+            # 경고만 찍고 판정에 반영하지 않으면, 감소량이 0이어도 「순서 무관」이
+            # 확정된다 (2026-09-12 외부 검토 #3이 합성 입력 9/9로 재현).
+            name_ok = len(set(wins)) == 1
+            valid = (not neg) and min(marg) >= MARGIN_MIN
+            ok = name_ok and valid
             stable &= ok
             per_P.append(wins[0] if ok else None)
             cells = "".join(f"{w[0]}↔{w[1]}".ljust(26) for w in wins)
@@ -91,7 +101,7 @@ def main():
                   ("   <- 잡음 대역 ±0.01 안이다. 승자 이름을 확정하지 않는다"
                    if min(marg) < 0.01 else ""))
         if not stable:
-            verdict[X] = "판정 불가"
+            verdict[X] = "판정 불가"      # 이름이 갈렸거나 승자가 유효하지 않다
         else:
             verdict[X] = "ⓑ 순서 무관" if len(set(per_P)) == 1 else "ⓐ 순서 의존"
         print(f"    → {verdict[X]}")
