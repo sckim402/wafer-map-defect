@@ -1,6 +1,6 @@
 """외부 AI 검토 결과(JSON)의 인용을 원문과 대조한다.
 
-    ./.venv/Scripts/python.exe src/verify_review.py <결과.json> [--kit ../ai_review_kit]
+    ./.venv/Scripts/python.exe src/verify_review.py <결과.json> [--kit ../ai_review/1차]
     ./.venv/Scripts/python.exe src/verify_review.py --demo      # 자체 검사
 
 왜 필요한가 (전역 규칙 「외부 자료」 / `paper-source` 스킬):
@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-KIT_DEFAULT = Path(__file__).resolve().parents[2] / "ai_review_kit"
+KIT_DEFAULT = Path(__file__).resolve().parents[2] / "ai_review" / "1차"
 TARGET = "docs/method_overview.md"
 
 
