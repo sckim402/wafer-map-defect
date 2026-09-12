@@ -17,7 +17,7 @@ import numpy as np
 sys.path.insert(0, "src")
 import config
 import azimuth_local as AZ
-from azimuth_local import one_map, outer_layer
+from azimuth_local import one_map, outer_layer, sample_rng, null_rng
 
 N_PER = int(sys.argv[1]) if len(sys.argv) > 1 else 400
 AZ.B = int(sys.argv[2]) if len(sys.argv) > 2 else 999
@@ -27,12 +27,15 @@ EDGES = [3, 10, 16, 25, 40, 10 ** 9]
 MIN_CELL = 10          # 이보다 적은 칸은 비율을 적지 않는다
 
 
-def probe(c, rng):
+def probe(c, n=None, nseed=0):
+    """`azimuth_local`과 **같은 표본·같은 귀무 RNG 규약**을 쓴다 (7차 검토 A1).
+    그래야 이 대조표와 본 표가 같은 맵을 보고 있다고 말할 수 있다."""
+    ci = list(config.PATTERN_CLASSES).index(c)
     maps = np.load(config.DATA_PROCESSED / f"{c}.npz", allow_pickle=True)["wafer_maps"]
     rows = []
-    for i in rng.permutation(len(maps))[:N_PER]:
+    for i in sample_rng(ci).permutation(len(maps))[:(n or N_PER)]:
         m = np.asarray(maps[i])
-        o, p = one_map(m, rng)
+        o, p = one_map(m, null_rng(ci, i, nseed))
         if np.isnan(o):
             continue
         rows.append((int((m[outer_layer(m > 0)] == 2).sum()), o, p))
@@ -40,8 +43,7 @@ def probe(c, rng):
 
 
 def main():
-    rng = np.random.default_rng(SEED)
-    R = {c: probe(c, rng) for c in CLASSES}
+    R = {c: probe(c) for c in CLASSES}
 
     print(f"클래스당 {N_PER}장 · 순열 B={AZ.B}")
     print("")
@@ -71,42 +73,23 @@ def main():
 def spread(n_per=200, seeds=(1, 2, 3)):
     """표본을 다시 뽑으면 기각률이 얼마나 움직이는가.
 
-    같은 lot이 공정 조건을 공유하므로(D-003) 이항 오차는 **하한**일 것이다.
-    ⚠ 다만 **초과 산포를 실측하지는 못했다** — n=200에서 3 draw 폭 4.5~9.0pp는
-    이항 기대 폭(≈2.5σ = 5~8pp) 안이다. **군집 때문이라고 쓰지 않는다**(§3-11:
-    기준선을 먼저 계산한다). lot 블록 부트스트랩은 11월 재측정에 건다.
+    ⚠ **7차 검토 A1 이후 이 함수가 재는 것이 바뀌었다.** 표본이 (SEED, 클래스)로
+    고정됐으므로 **표본 재추출 폭이 아니라 귀무 재배치의 몬테카를로 잡음**을 잰다.
+    표본 불확실성은 lot 블록 부트스트랩으로 따로 재야 하고 **11월 재측정에 건다.**
     """
     print("")
-    print(f"=== 표본을 다시 뽑았을 때의 폭 (클래스당 {n_per}장 × seed {len(seeds)}개) ===")
+    print(f"=== 귀무 seed만 바꿨을 때의 폭 (클래스당 {n_per}장 × seed {len(seeds)}개) ===")
     old_B, AZ.B = AZ.B, 399
     for c in CLASSES:
-        r = []
-        for sd in seeds:
-            rng = np.random.default_rng(sd)
-            x = probe_n(c, rng, n_per)
-            r.append((x[:, 2] <= .05).mean())
+        r = [(probe(c, n_per, sd)[:, 2] <= .05).mean() for sd in seeds]
         print(f"  {c:<11}" + " / ".join(f"{v:.1%}" for v in r) + f"   폭 {max(r) - min(r):.1%}p")
     AZ.B = old_B
-    print("  ⚠ 이 폭은 이항 오차로 설명되는 범위 안이다 — **초과 산포는 아직 못 쟀다.**")
-    print("     결론은 하나뿐이다: **소수점 첫째 자리를 인용하지 않는다.** 방향만 쓴다.")
-
-
-def probe_n(c, rng, n):
-    maps = np.load(config.DATA_PROCESSED / f"{c}.npz", allow_pickle=True)["wafer_maps"]
-    rows = []
-    for i in rng.permutation(len(maps))[:n]:
-        m = np.asarray(maps[i])
-        o, p = one_map(m, rng)
-        if not np.isnan(o):
-            rows.append((int((m[outer_layer(m > 0)] == 2).sum()), o, p))
-    return np.array(rows)
+    print("  ⚠ 이것은 **몬테카를로 잡음**이지 표본 불확실성이 아니다 (7차 A1 이후).")
+    print("     결론은 그대로다: **소수점 첫째 자리를 인용하지 않는다.** 방향만 쓴다.")
 
 
 def counterexample():
-    """이 검정이 **식별하지 않는 것**을 합성으로 보인다 (6차 외부 검토 #3).
-
-    기각을 「한 방위의 단일 덩어리」로 읽으면 안 되는 이유를 수치로 남긴다.
-    """
+    """이 검정이 **식별하지 않는 것**을 합성으로 보인다 (6차 외부 검토 #3)."""
     g = np.mgrid[-20:21, -20:21]
     v = (g[0] ** 2 + g[1] ** 2) <= 20 ** 2
     lay = outer_layer(v)

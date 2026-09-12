@@ -91,32 +91,78 @@ def one_map(m, rng):
     return obs, (1 + int((null >= obs).sum())) / (B + 1)
 
 
-def main():
-    rng = np.random.default_rng(SEED)
-    print(f"최외곽 1층 · 최대 연속 {ARC:.0f}° 호 점유율(닫힘) · 순열 B={B} · 클래스당 {N_PER}장")
-    print("")
-    print("⚠ 아래 '비율'은 **검정 가능한 맵에서의 명목 p<=.05 기각률**이다 (6차 외부 검토 #6).")
-    print("  검출력이 층 안 불량 수 k에 강하게 붙는다 — 같은 기하·같은 방위 가중치에서")
-    print("  k만 6/20/50으로 바꾸면 기각률이 3% -> 40% -> 75%로 움직인다.")
-    print("  **클래스 간 비를 국소성의 크기로 읽지 않는다.** k 중앙값과 제외 장수를 같이 적는다.")
-    print("")
-    print(f"{'클래스':<11}{'n':>5}{'제외':>5}{'k 중앙':>8}{'평균 점유':>11}{'p<=.05':>9}{'비율':>8}{'p 중앙값':>11}")
-    print("-" * 70)
+def sample_rng(ci):
+    """클래스 `ci`의 **표본 추출용** RNG. 귀무 추출과 분리돼 있다.
+
+    ⚠ **7차 외부 검토 A1 정정 (2026-09-12).** 전에는 `rng` 하나가 표본 추출과
+    귀무 재배치를 **번갈아** 소비했다. 그러면 `Edge-Loc`의 표본이 앞 클래스들이
+    소비한 난수 개수에 달라진다 — `B`나 `N_PER`를 바꾸면 **표본이 통째로 바뀐다.**
+    검토자가 클래스마다 RNG를 새로 만들자 **Edge-Loc 400장 중 370장이 교체**됐고
+    기각률이 75.25% → 70.50%로 움직였다. **문서로 고정되지 않는 수치였다.**
+    """
+    return np.random.default_rng([SEED, ci])
+
+
+def null_rng(ci, i, nseed=0):
+    """맵 하나의 **귀무 재배치용** RNG. 표본 순서와 무관하게 (클래스, 맵)으로 정해진다."""
+    return np.random.default_rng([SEED, ci, int(i), nseed])
+
+
+def table(nseed=0, n_per=None, verbose=True):
+    """클래스별 기각률 한 판. `nseed`만 바꾸면 **몬테카를로 잡음**을 볼 수 있다."""
+    n_per = n_per or N_PER
     out = {}
-    for c in config.PATTERN_CLASSES:
+    for ci, c in enumerate(config.PATTERN_CLASSES):
         maps = np.load(config.DATA_PROCESSED / f"{c}.npz", allow_pickle=True)["wafer_maps"]
-        pick = rng.permutation(len(maps))[:N_PER]
+        pick = sample_rng(ci).permutation(len(maps))[:n_per]
         O, P, K = [], [], []
         for i in pick:
             m = np.asarray(maps[i])
-            o, p = one_map(m, rng)
+            o, p = one_map(m, null_rng(ci, i, nseed))
             if not np.isnan(o):
                 O.append(o); P.append(p)
                 K.append(int((m[outer_layer(m > 0)] == 2).sum()))
         O, P, K = np.array(O), np.array(P), np.array(K)
-        out[c] = (len(O), O.mean(), int((P <= .05).sum()), float(np.median(P)), float(np.median(K)))
-        n, mo, nr, pm, km = out[c]
-        print(f"{c:<11}{n:>5}{len(pick) - n:>5}{km:>8.0f}{mo:>11.3f}{nr:>9}{nr / n:>8.1%}{pm:>11.4f}")
+        out[c] = dict(n=len(O), excluded=len(pick) - len(O), occ=float(O.mean()),
+                      rej=int((P <= .05).sum()), rate=float((P <= .05).mean()),
+                      p_med=float(np.median(P)), k_med=float(np.median(K)))
+        if verbose:
+            r = out[c]
+            print(f"{c:<11}{r['n']:>5}{r['excluded']:>5}{r['k_med']:>8.0f}"
+                  f"{r['occ']:>11.3f}{r['rej']:>9}{r['rate']:>8.1%}{r['p_med']:>11.4f}")
+    return out
+
+
+def main(nseeds=(0, 1, 2)):
+    print(f"최외곽 1층 · 최대 연속 {ARC:.0f}° 호 점유율(닫힘) · 순열 B={B} · 클래스당 {N_PER}장")
+    print("")
+    print("⚠ 아래 '비율'은 **검정 가능한 맵에서의 명목 p<=.05 기각률**이다 (6차 검토 #6).")
+    print("  검출력이 층 안 불량 수 k에 강하게 붙는다 — 같은 기하·같은 방위 가중치에서")
+    print("  k만 6/20/50으로 바꾸면 기각률이 3% -> 40% -> 75%로 움직인다.")
+    print("  **클래스 간 비를 국소성의 크기로 읽지 않는다.** k 중앙값과 제외 장수를 같이 적는다.")
+    print("")
+    print("⚠ 표본 RNG와 귀무 RNG를 **분리**했다 (7차 검토 A1). 표본은 (SEED, 클래스)로,")
+    print("  귀무는 (SEED, 클래스, 맵)으로 정해진다 — B나 N_PER을 바꿔도 표본이 안 바뀐다.")
+    print("  제외는 **뽑은 뒤에** 하고 분모는 적격 표본만이다 (7차 검토 A2).")
+    print("")
+    print(f"{'클래스':<11}{'n':>5}{'제외':>5}{'k 중앙':>8}{'평균 점유':>11}{'p<=.05':>9}{'비율':>8}{'p 중앙값':>11}")
+    print("-" * 70)
+    out = table(nseeds[0])
+
+    print("")
+    print(f"=== 귀무 seed만 바꾼 몬테카를로 잡음 (B={B}, seed {len(nseeds)}개) ===")
+    print("  7차 검토 A3: **p가 0.05 근처인 맵의 판정이 흔들린다.** 폭을 같이 적는다.")
+    rows = {c: [out[c]["rate"]] for c in config.PATTERN_CLASSES}
+    for ns in nseeds[1:]:
+        t = table(ns, verbose=False)
+        for c in config.PATTERN_CLASSES:
+            rows[c].append(t[c]["rate"])
+    for c in config.PATTERN_CLASSES:
+        v = rows[c]
+        print(f"  {c:<11}" + " / ".join(f"{x:.1%}" for x in v)
+              + f"   폭 {max(v) - min(v):.1%}p")
+    print("")
+    print("  → **소수점 첫째 자리를 인용하지 않는다.** 방향만 쓴다.")
     return out
 
 
