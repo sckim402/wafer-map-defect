@@ -69,17 +69,27 @@ def best_frac(masks, fail):
 def one_map(m, rng):
     v = m > 0
     lay = outer_layer(v)
+    cy, cx = np.array(np.nonzero(v)).mean(axis=1)
     ys, xs = np.nonzero(lay)
+
+    # ⚠ **무게중심에 정확히 놓인 die는 방위각이 없다** (8차 외부 검토 C2 정정).
+    # `arctan2(0, 0)`은 예외 없이 **0.0**을 돌려주므로 그 die가 **가짜 0°**를 받고,
+    # 좌우 반사에서 소속 호가 달라져 **통계량이 바뀐다**(합성 예: 0.4667 → 0.4333).
+    # 내부에 구멍이 있으면 중심 die가 최외곽 층에 들 수 있어 실제로 발생 가능하다.
+    # **호에 넣을 수 없는 점이므로 층에서 뺀다** — 귀무의 die 풀에서도 뺀다.
+    # ⚠ **현행 25,519장에는 해당 die가 0개다**(검토자 실측: 적격 25,007장 × 반사 3종
+    # = 75,021건 전부 값 변화 0). **잠재 입력 결함을 막는 것이고 표를 바꾸지 않는다.**
+    keep = ~((ys == cy) & (xs == cx))
+    ys, xs = ys[keep], xs[keep]
     if len(ys) < MIN_DIE:
         return np.nan, np.nan
-    fail = (m[lay] == 2)
+    fail = (m[lay] == 2)[keep]
     k = int(fail.sum())
     if k < MIN_FAIL or k == len(fail):
         # ⚠ 주석이 틀렸었다 (6차 외부 검토 #7): 전부 불량이면 점유율은 1이 아니라
         # **기하가 정하는 최대 호의 die 비율**이다(반경 20 원판이면 0.25).
         # 진짜 이유는 **모든 재배치가 같아 검정이 퇴화**하는 것이다(p=1).
         return np.nan, np.nan
-    cy, cx = np.array(np.nonzero(v)).mean(axis=1)
     masks = arc_masks(np.degrees(np.arctan2(ys - cy, xs - cx)) % 360)
     obs = best_frac(masks, fail.astype(float))
     n = len(ys)
@@ -206,8 +216,25 @@ def demo():
             a, b = one_map(mm, np.random.default_rng(1))[0], one_map(flip, np.random.default_rng(1))[0]
             assert abs(a - b) < 1e-12, f"반사에서 통계량이 바뀐다: {a} vs {b}"
 
+    # C2 회귀 (8차) — **중심 die가 층에 드는 기하**에서도 반사 불변인가.
+    # 안쪽에 고리 구멍을 뚫으면 무게중심 die가 최외곽 층에 든다.
+    r2 = g[0] ** 2 + g[1] ** 2
+    v3 = (r2 <= 400) & ~((r2 >= 2) & (r2 <= 9))
+    l3 = outer_layer(v3)
+    c3 = np.array(np.nonzero(v3)).mean(axis=1)
+    y3, x3 = np.nonzero(l3)
+    ctr = np.flatnonzero((y3 == c3[0]) & (x3 == c3[1]))
+    assert len(ctr) == 1, "이 합성 기하에 중심 die가 층에 들지 않는다 — 회귀가 죽었다"
+    m3 = np.where(v3, 1, 0).astype(np.uint8)
+    pick = np.unique(np.r_[np.random.default_rng(3).choice(len(y3), 30, replace=False), ctr])
+    m3[y3[pick], x3[pick]] = 2
+    base = one_map(m3, np.random.default_rng(5))[0]
+    for flip in (m3[:, ::-1], m3[::-1, :], m3.T):
+        f = one_map(flip, np.random.default_rng(5))[0]
+        assert abs(base - f) < 1e-12, f"중심 die 때문에 반사에서 바뀐다: {base} vs {f}"
+
     print(f"demo ok — 쐐기 {int(wedge.sum())}/{len(ys)} die · 몰림 p={p_local:.4f} / "
-          f"흩뿌림 p={p_unif:.4f} · 반사 6종 불변")
+          f"흩뿌림 p={p_unif:.4f} · 반사 6종 불변 · 중심 die 기하 반사 3종 불변")
 
 
 if __name__ == "__main__":
