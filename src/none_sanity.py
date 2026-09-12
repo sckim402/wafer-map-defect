@@ -150,13 +150,24 @@ def load(cls, rng, n=N_SAMPLE):
 
 
 def main():
-    rng = np.random.default_rng(config.SEED)
+    rng = np.random.default_rng(config.SEED)   # 아래 [3]·[4] 스윕 전용
     classes = [config.NONE_CLASS, "Edge-Loc", "Edge-Ring", "Random", "Center"]
 
     print(f"밴드 k={K} (D-007) · bin={N_BINS} · 순열 {N_PERM}회/장 · 표본 {N_SAMPLE:,}장\n")
     R = {}
     for c in classes:
-        rows = [r for r in (analyse(m, rng) for m in load(c, rng)) if r is not None]
+            # ⚠ **표본 RNG와 순열 RNG를 분리한다** (2026-09-12, 7차 외부 검토 A1과 같은 계열).
+        # 전에는 `rng` 하나가 ⓐ 클래스별 표본 4,000장과 ⓑ 맵마다 순열 40회를
+        # **번갈아** 소비해서, 뒤 클래스의 표본이 **앞 클래스가 쓴 난수 개수**에 달렸다
+        # (`N_PERM`을 바꾸면 표본이 통째로 바뀐다).
+        # **파급은 쟀다 (§3-5)**: 분리 전후 중앙값 차가 |Δ| ≤ 0.0020,
+        # `실측−귀무`는 ≤0.0016이고 **`none`의 0.8285 / 이론 0.8302는 소수점까지 같다.**
+        # `azimuth_local`이 6~9%p 움직인 것과 대비된다 — **거기는 역치를 넘는 비율,
+        # 여기는 연속량의 중앙값**이다. 그래도 규약이 없는 쪽을 남기지 않는다.
+        ci = classes.index(c)
+        srng = np.random.default_rng([config.SEED, ci])
+        rows = [r for r in (analyse(m, np.random.default_rng([config.SEED, ci, j]))
+                            for j, m in enumerate(load(c, srng))) if r is not None]
         obs, perm, theo, neff, nf = (np.array(x) for x in zip(*rows))
         R[c] = dict(obs=obs, perm=perm, theo=theo, neff=neff, nf=nf)
         print(f"  {c:<11} 계산가능 {len(obs):>5,}장  중앙 n_fail {np.median(nf):>6.0f}"
