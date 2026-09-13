@@ -48,6 +48,33 @@ accuracy of`, `defect density | number of defect | die count | wafer size | conf
 
 ---
 
+## 1-A. ★ WM-811K의 출처 — **이 논문이 만들었다** (2026-09-13 원문 재확인)
+
+*"초록의 `WM-811K[1]` 각주가 맞나"*를 물어 **원문에서 직접 뽑았다**(전역 규칙: 요약을 인용 근거로 쓰지 않는다).
+
+> **기여 목록 2번**: *"The WM-811K dataset**¹** **developed in this study** is the largest known
+> wafer map data set available to the public."*  — 각주 1 = `http://mirlab.org/dataSet/public/`
+>
+> **초록**: *"the WM-811K dataset **was built** comprising 811 457 wafer maps, in which each wafer map
+> was collected from real-world fabrication."*
+>
+> **§VI-A**: *"comprises 811 457 wafer maps that were collected from **46 293 lots** in real-world fabrication."*
+
+**→ 데이터셋의 생성·명명·공개가 전부 이 논문이다. `WM-811K[1]`은 정확한 1차 출처 인용이다.**
+저자 소속에 **TSMC 제조기술센터**가 있고(J.-L. Chen), 본문은 *"TSMC가 이 시스템을 도입했다"*고 적는다.
+
+**딸림 확인 — 「패턴 8종」도 원논문의 용어다.** *"labeled from one of the **nine types** …
+Center, Donut, Edge-local, Edge-ring, Local, Near-full, Random, Scratch and Nonpattern
+(the **first eight types are regarded as Pattern**)"*. 우리의 **「패턴 8종」(`none` 제외)은 이 구분 그대로**다.
+
+⚠ **단 `25,519장`은 [1]의 수치가 아니라 우리가 공개 파일에서 센 값이다.**
+원논문은 라벨분을 **54,356(train) + 118,595(test) = 172,951**로 적는데,
+공개된 `LSWMD`에서 세면 **172,950**(= `none` 147,431 + 패턴 8종 **25,519**)으로 **1장 차이**가 난다.
+**초록 문장의 `[1]`은 「WM-811K」에 붙지 「25,519」에 붙지 않으므로 서술에 문제는 없다.**
+**차이의 원인은 확인하지 않았다 — 추정으로 적지 않는다.**
+
+---
+
 ## 2. ① 분할 정책 — **lot 단위는 표준이 아니고, 원논문도 아니다**
 
 | 논문 | 분할 | lot 언급 |
