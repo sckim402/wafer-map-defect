@@ -380,7 +380,12 @@ Center는 중심이 바깥의 **3.24배**였다.
 
 [1] Yu, N., Chen, H., Xu, Q., Hasan, M. M., Sie, O., *Wafer map defect patterns
 classification based on a lightweight network and data augmentation*,
-CAAI Trans. Intelligence Technology **8**(2), 2023. DOI `10.1049/cit2.12126`
+CAAI Trans. Intelligence Technology **8**(3), 1029–1042, 2023. DOI `10.1049/cit2.12126`
+
+> ⚠ **서지 정정 (2026-09-13).** 권호가 `8(2)`로 적혀 있었고 쪽수가 없었다.
+> **Crossref API(`api.crossref.org/works/10.1049/cit2.12126`) 직접 조회로 `8(3) 1029–1042` 확인.**
+> 원문을 못 읽은 인용은 **서지까지 틀려 있었다** — 검색 결과를 옮겨 적었기 때문이다.
+> (Crossref `published`는 2022이나 `8(3)`이 2023년 호다. **「Yu 2023」은 유지한다.**)
 
 > 🔴 **이 인용은 원문을 읽고 붙인 것이 아니다 (2026-09-12 확인).**
 > 이 항목은 **D-024 문헌 스캔(8편, 전문 추출) 이전에** 들어왔고 **그 8편에 없다.**
@@ -390,6 +395,28 @@ CAAI Trans. Intelligence Technology **8**(2), 2023. DOI `10.1049/cit2.12126`
 > (양성 대조 `centre pattern`은 p.1에서 검출), **나는 Wiley 403으로 원문을 못 받았다.**
 > **그래서 「[1]에 없다」가 아니라 「[1]을 근거로 쓸 수 없다」가 지금의 정확한 서술이다.**
 > 전역 규칙(요약을 원문 대신 인용 근거로 쓰지 않는다)이 잡으려던 바로 그것이다.
+
+> ## 🟢 **2026-09-13 — 원문을 확보해 읽었다. 서술이 한 단계 세진다**
+>
+> **403은 페이월이 아니었다** — OpenAlex `is_oa: true` · `oa_status: **gold**` ·
+> `license: cc-by-nc-nd` · `version: publishedVersion`. 스크립트가 막힌 것이고
+> **브라우저로 HTML 전문판이 열렸다** (`/doi/full/10.1049/cit2.12126`).
+>
+> **① 4차 검토 보고가 재현됐다** — 본문 전문에 **`clean` 0회 · `thermal` 0회 · `etch` 0회**.
+> 즉 이 표가 [1]에 매달았던 **`Loc` = 세정**과 **`Edge-Ring` = 열 공정**은 **원문에 없다.**
+>
+> **② 원문이 실제로 말하는 공정 원인은 두 문장이 전부다**:
+> > *"For example, the centre pattern may be caused by nonuniformity problems in chemical
+> > mechanical polishing (CMP). Scratch patterns may be caused by scratching during material
+> > transportation or the mechanical polishing process [1]."*
+>
+> **③ 그리고 그 두 문장조차 [1] 인용이다.** 같은 논문 §2가 **`[1]` = Jin의 DBSCAN 클러스터링
+> 논문**임을 밝힌다(*"Jin used the density-based spatial clustering of applications with the
+> noise algorithm … [1]"*). **공정 문헌이 아니라 군집화 방법론 문헌이다.**
+>
+> **→ 판정은 그대로 「[1]을 근거로 쓸 수 없다」이나, 근거가 「못 읽었다」에서
+> 「읽었고, 대응이 거기 없으며, 있는 두 줄도 군집화 논문 인용이다」로 바뀐다.**
+> **이쪽이 훨씬 센 진술이다.** (학습 지도 티켓 06)
 
 [2] JEES, *CMP Process Defects: Causes, Types & Solutions*.
 — CMP 결함이 수율 손실의 주요 범주이며 **웨이퍼 위치·패턴 밀도·연마 시간에
