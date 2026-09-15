@@ -40,11 +40,21 @@ import config
 from azimuth import auc
 
 CACHE = config.DATA_PROCESSED / "shape2.npz"
+CACHE_TIENAN = config.DATA_PROCESSED / "shape2_tienan.npz"   # D-046 — 수정판 전용
 MAX_FAIL = 4000          # 이보다 불량이 많으면 생략(Near-full 등) → NaN
 DISK = np.sqrt(np.pi) / 2.0      # ≈ 0.8862
+EIG_TOL = 1e-9           # 고유값 동점 판정(상대). D-025 (나)에서 정해졌다
 
 
-def shape2(m):
+def shape2(m, tie_nan=True):
+    """`tie_nan=True`면 **동점이 있을 때 NaN**을 반환한다 (D-024 → D-025, 적용 D-046).
+
+    동점이 둘이다. 어느 쪽이든 값이 **회전과 무관하게 임의로** 정해진다.
+      ① 최대 연결성분 **크기** 동점 — `argmax`가 래스터 스캔 순서로 깬다 (전수 128장)
+      ② PCA **고유값** 동점 — 주축이 유일하지 않다 (전수 9장).
+         `+1e-12*I`는 두 고유값에 같은 값을 실어 **동점을 깨지 못한다**
+    ⛔ `tie_nan=False`는 **옛 기록을 재현하기 위해서만** 쓴다 (`w6_checks` · `w6_impact`).
+    """
     a = np.asarray(m)
     fail = a == config.VAL_FAIL
     out = dict(cc_n=np.nan, cc_frac=np.nan, cc_len=np.nan,
@@ -56,8 +66,10 @@ def shape2(m):
     if k == 0:
         return out
     sizes = np.bincount(lab.ravel())[1:]
+    n = int(sizes.max())
+    if tie_nan and (sizes == n).sum() > 1:      # ① 크기 동점 → 정의되지 않는다
+        return out
     big = int(np.argmax(sizes)) + 1
-    n = int(sizes[big - 1])
     out["cc_n"], out["cc_frac"] = float(n), n / tot
     if n < 3:
         return out
@@ -65,7 +77,13 @@ def shape2(m):
     yy, xx = np.nonzero(lab == big)
     P = np.column_stack([xx.astype(float), yy.astype(float)])
     P -= P.mean(0)
-    ev, V = np.linalg.eigh(np.cov(P.T) + 1e-12 * np.eye(2))
+    C = np.cov(P.T)
+    if tie_nan:
+        ev, V = np.linalg.eigh(C)
+        if abs(ev[1] - ev[0]) <= EIG_TOL * max(abs(ev[1]), 1e-300):
+            return out                      # ② 고유값 동점 → 주축이 유일하지 않다
+    else:
+        ev, V = np.linalg.eigh(C + 1e-12 * np.eye(2))
     proj = P @ V[:, 1]                      # 주축(최대 고유값) 투영
     L = float(proj.max() - proj.min()) + 1.0
     out["cc_len"] = L
@@ -75,9 +93,10 @@ def shape2(m):
     return out
 
 
-def build(cls_order, idx_order):
-    if CACHE.exists():
-        with np.load(CACHE, allow_pickle=True) as z:
+def build(cls_order, idx_order, tie_nan=True):
+    cache = CACHE_TIENAN if tie_nan else CACHE
+    if cache.exists():
+        with np.load(cache, allow_pickle=True) as z:
             return {k: z[k] for k in z.keys()}
     store = {}
     for c in config.PATTERN_CLASSES:
@@ -86,13 +105,13 @@ def build(cls_order, idx_order):
     keys = ("cc_n", "cc_frac", "cc_len", "cc_width", "cc_compact", "cc_aspect")
     out = {k: np.full(len(cls_order), np.nan) for k in keys}
     for i, (c, j) in enumerate(zip(cls_order, idx_order)):
-        f = shape2(store[c][j])
+        f = shape2(store[c][j], tie_nan=tie_nan)
         for k in keys:
             out[k][i] = f[k]
         if (i + 1) % 6000 == 0:
             print(f"  {i+1:,}/{len(cls_order):,}", flush=True)
-    np.savez_compressed(CACHE, **out)
-    print(f"  캐시 저장: {CACHE}")
+    np.savez_compressed(cache, **out)
+    print(f"  캐시 저장: {cache}")
     return out
 
 
@@ -166,6 +185,43 @@ def main():
         print(f"  {c:<12}{f(base['cov']):>12.3f}{f(rad['radial_contrast']):>12.3f}"
               f"{f(base['size']):>13.3f}")
     print("\n  |r|>0.9면 중복(D-010). size와 상관이 높으면 크기 대리변수 의심(§3-2)")
+
+
+
+def demo():
+    """동점 가드 자체 검사. `python -c "import shape2; shape2.demo()"`
+
+    **막는 것은 사례가 아니라 계열이다** (D-030) — 크기 동점과 고유값 동점을
+    **둘 다** 세우고, `tie_nan=False`가 옛 값을 그대로 낸다는 것까지 본다.
+    """
+    def wafer(cells, h=7, w=7):
+        m = np.full((h, w), config.VAL_PASS, dtype=int)
+        for y, x in cells:
+            m[y, x] = config.VAL_FAIL
+        return m
+
+    # ① 크기 동점 — 같은 크기의 덩어리 둘. argmax는 위쪽을 고른다
+    tie_size = wafer([(1, 1), (1, 2), (1, 3), (5, 1), (5, 2), (5, 3)])
+    assert np.isnan(shape2(tie_size)["cc_compact"]), "크기 동점이 NaN이 아니다"
+    assert np.isfinite(shape2(tie_size, tie_nan=False)["cc_compact"]),         "tie_nan=False가 옛 값을 못 낸다 — 기록 재현이 깨졌다"
+
+    # ② 고유값 동점 — 3x3 정사각 덩어리는 공분산이 등방이라 주축이 유일하지 않다
+    tie_eig = wafer([(y, x) for y in (2, 3, 4) for x in (2, 3, 4)])
+    assert np.isnan(shape2(tie_eig)["cc_compact"]), "고유값 동점이 NaN이 아니다"
+    assert np.isfinite(shape2(tie_eig, tie_nan=False)["cc_compact"]),         "tie_nan=False가 옛 값을 못 낸다"
+
+    # ③ 동점이 없으면 값이 그대로 나온다 — 가드가 멀쩡한 맵까지 지우면 안 된다
+    line = wafer([(3, x) for x in range(1, 6)])          # 1-die 폭 선분
+    v, v_old = shape2(line)["cc_compact"], shape2(line, tie_nan=False)["cc_compact"]
+    assert np.isfinite(v) and abs(v - v_old) < 1e-9, "동점이 없는데 값이 달라졌다"
+    assert 0.4 < v < 0.6, f"1-die 폭 선분의 cc_compact가 이상하다: {v}"
+
+    # ④ 동점 판정이 회전에 안 걸린다 (이 특징의 존재 이유다)
+    for k in (1, 2, 3):
+        assert np.isnan(shape2(np.rot90(tie_size, k))["cc_compact"])
+        assert np.isnan(shape2(np.rot90(tie_eig, k))["cc_compact"])
+
+    print("demo OK — 크기 동점·고유값 동점 NaN / 정상 맵 불변 / tie_nan=False 재현")
 
 
 if __name__ == "__main__":

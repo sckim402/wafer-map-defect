@@ -91,7 +91,7 @@ def cc_variant(m, mode="base"):
     원본은 argmax가 동점을 **래스터 스캔 순서**로 깬다 — 회전과 무관하게 임의값이다.
     """
     if mode == "base":
-        return shape2(m)["cc_compact"]
+        return shape2(m, tie_nan=False)["cc_compact"]   # D-046 — base 팔은 옛 판이다
     a = np.asarray(m)
     fail = a == config.VAL_FAIL
     tot = int(fail.sum())

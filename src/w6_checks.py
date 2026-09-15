@@ -68,7 +68,7 @@ def six_feats(m):
         edge_contrast(m),
         band_circular_variance(m, K),   # subsample=None — 난수 개입 없음
         rc, mp,
-        shape2(m)["cc_compact"],
+        shape2(m, tie_nan=False)["cc_compact"],   # D-046 — 이 검사는 옛 판을 기록한다
     ], dtype=float)
 
 
