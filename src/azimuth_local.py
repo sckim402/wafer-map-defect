@@ -33,6 +33,7 @@ ARC = 90.0          # 호 폭(도)
 STEP = 10           # 호 시작점 간격(도)
 MIN_DIE = 20        # 최외곽 층이 이보다 작으면 해상도가 없다
 MIN_FAIL = 3
+ARC_EPS = 1e-9      # 연속 호의 경계 허용오차 (D-051). 아래 arc_masks 주석 참조
 
 
 def outer_layer(v):
@@ -45,7 +46,7 @@ def outer_layer(v):
     return v & ~inner
 
 
-def arc_masks(theta):
+def arc_masks(theta, grid=False):
     """호 시작점마다 '이 die가 호 안인가'를 미리 만들어 둔다.
 
     ⚠ **호는 닫힘 `[s, s+ARC]`이다** (2026-09-12 6차 외부 검토 #2 정정).
@@ -58,15 +59,39 @@ def arc_masks(theta):
     10의 배수라 **족(族)이 자기 자신으로 가므로 최댓값이 보존된다.**
     `circ_var`와 달리 **이쪽은 구조적이지 않다** — 실측 1,962장 전수에서
     반열림 16장 변화(최대 |Δ| 0.038) → 닫힘 **0장**.
+
+    ⛔ **2026-09-16 (D-051) — 기본은 이제 **연속 시작점**이다. `grid=True`는 옛 기록 재현용.**
+    위 「둘 다 10의 배수라 족이 보존된다」가 **불변성이 격자에 기대고 있었다**는 자백이다.
+    **회전은 아예 안 걸려 있었다** — `[5°, 94°, 185°]`가 격자에서 `1/3`, 5° 돌리면 `2/3`(8차 C1).
+
+    **연속판이 유한 후보로 정확히 계산되는 이유**: die `j`가 닫힘 호 `[s, s+ARC]`에 드는
+    `s`의 집합은 **닫힌** 구간 `[θⱼ − ARC, θⱼ]`이다. 닫힌 구간 지시함수의 합은
+    **위반연속(upper semi-continuous)** — 경계에서 값이 양쪽 극한 이상이다.
+    따라서 최대는 **중단점에서 달성**되고, 중단점은 **`{θⱼ}` 와 `{θⱼ − ARC}` 둘 다**이다.
+    → **후보는 두 집합의 합집합 `2n`개다.**
+
+    ⛔ **좌단 `{θⱼ − ARC}`만 쓰면 틀린다 — 2026-09-16에 실제로 그렇게 짰다가 걸렸다.**
+    *"최대점에서 가장 가까운 좌단으로 옮겨도 활성 집합이 안 준다"*는 **증명이 잘못됐다**:
+    뒤로 옮기면 **호 먼 끝에 걸친 die가 빠진다.** 실측 **반사 불일치 25/300**.
+    그리고 **합집합이라야 반사 아래 닫힌다** — 반사 `θ→−θ`는 시작점 `s`를 `−s−ARC`로 보내므로
+    `{θⱼ}`와 `{θⱼ−ARC}`가 **서로 맞바뀐다.** 한쪽만 쓰면 족이 보존되지 않는다.
+
+    ⚠ **수치 허용오차도 필요하다.** 후보 `s = θⱼ − ARC`에서 die `j`가 호의 **먼 끝**에
+    정확히 얹히는데 `(θⱼ − s) % 360`이 부동소수로 `90 ± ulp`가 된다.
+    `ARC_EPS`는 실제 각도 구조보다 훨씬 작아 **경계 판정만 고친다.**
+    **합집합 + `ARC_EPS`에서 반사 불일치 0/300**이다.
     """
-    return np.stack([((theta - s) % 360) <= ARC for s in range(0, 360, STEP)])
+    if grid:
+        return np.stack([((theta - s) % 360) <= ARC for s in range(0, 360, STEP)])
+    s = np.r_[theta % 360, (theta - ARC) % 360]        # 중단점 전체
+    return ((theta[None, :] - s[:, None]) % 360) <= ARC + ARC_EPS
 
 
 def best_frac(masks, fail):
     return (masks @ fail).max() / fail.sum()
 
 
-def one_map(m, rng):
+def one_map(m, rng, grid=False):
     v = m > 0
     lay = outer_layer(v)
     cy, cx = np.array(np.nonzero(v)).mean(axis=1)
@@ -90,7 +115,7 @@ def one_map(m, rng):
         # **기하가 정하는 최대 호의 die 비율**이다(반경 20 원판이면 0.25).
         # 진짜 이유는 **모든 재배치가 같아 검정이 퇴화**하는 것이다(p=1).
         return np.nan, np.nan
-    masks = arc_masks(np.degrees(np.arctan2(ys - cy, xs - cx)) % 360)
+    masks = arc_masks(np.degrees(np.arctan2(ys - cy, xs - cx)) % 360, grid=grid)
     obs = best_frac(masks, fail.astype(float))
     n = len(ys)
     null = np.empty(B)
