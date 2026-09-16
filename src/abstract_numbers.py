@@ -29,6 +29,20 @@ FEAT_LABEL = {"cov": "coverage", "ctr": "edge_contrast", "cv": "circ_var",
 RF = dict(n_estimators=300, min_samples_leaf=2, class_weight="balanced",
           random_state=0, n_jobs=-1)
 MAX_LAYER = 6
+PINNED_SKLEARN = "1.7.2"     # D-022 — 제출본을 재현하는 버전. 이 파일의 정답키는 그 판이다
+
+
+def key_path():
+    """정답키 경로. **핀 버전이 아니면 다른 파일에 쓴다** (D-046).
+
+    이 스크립트는 초록 수치 전부를 낸다. 1.9.0으로 돌린 값이 `abstract_key.npz`를
+    덮으면 **7차 검토의 채점 기준이 조용히 바뀐다** — 읽는 쪽은 그것을 알 방법이 없다.
+    """
+    import sklearn
+    v = sklearn.__version__
+    if v == PINNED_SKLEARN:
+        return config.DATA_PROCESSED / "abstract_key.npz"
+    return config.DATA_PROCESSED / f"abstract_key_sk{v}.npz"
 
 
 def load():
@@ -269,7 +283,10 @@ if __name__ == "__main__":
     for st in range(len(STAGES)):
         for nm, v in bottleneck_stability(stage=st).items():
             key[f"stab_{st}_{nm}"] = v
-    np.savez(config.DATA_PROCESSED / "abstract_key.npz",
-             **{k: np.array(v) for k, v in key.items()})
+    kp = key_path()
+    np.savez(kp, **{k: np.array(v) for k, v in key.items()})
     print("")
-    print(f"정답키 저장 — {config.DATA_PROCESSED / 'abstract_key.npz'}")
+    import sklearn
+    print(f"정답키 저장 — {kp}   (sklearn {sklearn.__version__})")
+    if kp.name != "abstract_key.npz":
+        print(f"  ⚠ 핀({PINNED_SKLEARN})이 아니라 별도 파일에 썼다 — abstract_key.npz는 그대로다")
