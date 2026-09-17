@@ -6,6 +6,13 @@
 ⛔ **`one_map`의 RNG 소비 패턴을 바꾸지 않는다** — D-034가 고친 자리다.
    `azimuth_local`에서 그대로 import한다. 벡터화하면 순열이 달라져 비교 불가가 된다.
 
+🔴 **`grid=True`(이산판)로 못박는다 — 10차 외부 검토 H03.**
+   D-051이 `one_map`의 기본값을 연속판(`grid=False`)으로 바꿨고, 이 스크립트는
+   기본값을 쓰고 있어서 **지금 돌리면 D-050의 이산 수치가 안 나왔다.**
+   D-050은 이산 정의의 기록이므로 **정의를 호출부에 명시**한다
+   (`w6_checks.py`가 `shape2(m, tie_nan=False)`로 고정된 것과 같은 처리).
+   ⛔ **연속판 수치는 `w9_arc_cont.py`가 낸다. 두 스크립트를 섞지 않는다.**
+
 돌리기: ./.venv/Scripts/python.exe -u src/w9_azimuth_boot.py [B_BOOT]
 """
 import sys
@@ -70,8 +77,8 @@ def boot(rej, lot_id, B, rng):
 
 def main():
     print("=" * 92)
-    print(f"  전수 방위 검정 · 맵 안 순열 B={B_PERM} (규약 불변) · lot 재추출 "
-          f"B_BOOT={B_BOOT:,} · SEED={SEED}")
+    print(f"  전수 방위 검정 · **이산(격자) 호 grid=True** · 맵 안 순열 B={B_PERM} "
+          f"(규약 불변) · lot 재추출 B_BOOT={B_BOOT:,} · SEED={SEED}")
     print("=" * 92)
     with np.load(config.DATA_PROCESSED / "split_folds.npz", allow_pickle=True) as z:
         cls, lot, idx_in_cls = (z["cls"].astype(str), z["lot"].astype(str), z["idx_in_cls"])
@@ -86,7 +93,7 @@ def main():
 
         rej, lots_, n_ex = [], [], 0
         for i in range(len(maps)):
-            o, p = one_map(np.asarray(maps[i]), null_rng(ci, i, 0))
+            o, p = one_map(np.asarray(maps[i]), null_rng(ci, i, 0), grid=True)
             if np.isnan(o):
                 n_ex += 1
                 continue

@@ -54,9 +54,23 @@ def lot_boot_ratio(num_per_lot, den_per_lot, B, rng):
     return tuple(np.nanpercentile(r, [2.5, 97.5]))
 
 
-def pval(obs, null):
-    """단측(큰 쪽) 순열 p — +1 보정. 0을 내지 않는다."""
-    return (1 + int(np.sum(np.asarray(null) >= obs))) / (1 + len(null))
+def pval(obs, null, rtol=1e-9):
+    """단측(큰 쪽) 순열 p — +1 보정. 0을 내지 않는다.
+
+    🔴 **10차 외부 검토(H01·H02)가 두 가지를 잡았다. 둘 다 여기서 고친다.**
+
+    ⓐ **수학적 동점을 부동소수 우열로 세면 안 된다.** 층=그룹처럼 귀무가 관측과
+       **정확히 같아야 하는** 퇴화 조건에서 합산 순서의 반올림(2e-16)이 우열로 집계돼
+       **`p=0.034`라는 거짓 유의**가 나왔다. 상대 허용오차 안이면 **동점으로 센다**.
+    ⓑ **정의되지 않은 통계량에 `p`를 내면 안 된다.** `obs`가 NaN이면
+       `NaN >= NaN`이 전부 False라 **최소 `p`가 나왔다.** 이제 **NaN을 낸다** —
+       「검정 불가」는 「가장 유의」의 정반대다.
+    """
+    null = np.asarray(null, dtype=float)
+    if not np.isfinite(obs) or not np.isfinite(null).any():
+        return np.nan
+    tol = rtol * max(abs(obs), float(np.nanmax(np.abs(null))), 1e-300)
+    return (1 + int(np.sum(null >= obs - tol))) / (1 + len(null))
 
 
 # ───────────────────────── ① lot 내 재현성 ─────────────────────────
@@ -212,13 +226,19 @@ def part3_one(x, lot_c, rng, strata=None):
     if st is not None:
         st = np.unique(st[keep], return_inverse=True)[1]
     if len(x) < 10 or g.max() < 1:
-        return np.nan, np.nan, np.nan, len(x), int(ok.sum())
+        return np.nan, np.nan, np.nan, len(x), int(ok.sum()), True
     obs = icc(x, g)
     if st is None:
         null = np.array([icc(x[rng.permutation(len(x))], g) for _ in range(B_PERM)])
     else:
         null = np.array([icc(x[perm_within(st, rng)], g) for _ in range(B_PERM)])
-    return obs, null.mean(), pval(obs, null), len(x), int(ok.sum())
+    # 퇴화 귀무 — 섞을 것이 없어 귀무 분포가 한 점이면 **검정 자체가 성립하지 않는다**
+    # (층이 lot을 사실상 식별하면 일어난다. 10차 H01)
+    spread = float(np.nanstd(null)) if np.isfinite(null).any() else np.nan
+    scale = max(abs(obs), float(np.nanmax(np.abs(null))) if np.isfinite(null).any() else 0,
+                1e-300)
+    degen = not np.isfinite(spread) or spread <= 1e-9 * scale
+    return obs, null.mean(), pval(obs, null), len(x), int(ok.sum()), degen
 
 
 def residualize(x, size):
@@ -337,13 +357,24 @@ def demo():
     assert abs(n5) < 0.1, f"귀무가 응집을 안 깬다 — lot 안에서 섞고 있다 (귀무평균 {n5:.3f})"
     assert p5 <= 1.0 / (1 + B_PERM) + 1e-12, f"응집이 뚜렷한데 p가 최소값이 아니다: {p5:.3f}"
     # 층 고정 귀무: 층이 lot과 같으면 귀무가 관측과 같아져 **검출력이 0**이어야 한다
-    _, n6, p6, *_ = part3_one(xc, g5.astype(str), np.random.default_rng(4), strata=g5)
-    assert p6 > 0.5 and n6 > 0.9, "층=lot이면 귀무가 관측과 같아야 한다 (층 고정이 안 걸린다)"
+    _, n6, p6, _, _, dg6 = part3_one(xc, g5.astype(str), np.random.default_rng(4), strata=g5)
+    assert n6 > 0.9 and dg6, "층=lot이면 귀무 = 관측이고 퇴화로 표시돼야 한다"
+    assert p6 > 0.5, f"수학적 동점인데 p가 작다 — 반올림을 우열로 센다 (10차 H01): {p6}"
+    # [10차 H01] 반올림이 우열로 세지는 수치 영역에서도 동점이어야 한다
+    gh = np.repeat(np.arange(6), 10)
+    xh = np.random.default_rng(8).normal(size=60)
+    _, _, ph, _, _, dgh = part3_one(xh, gh.astype(str), np.random.default_rng(4), strata=gh)
+    assert ph > 0.5 and dgh, f"퇴화 귀무에서 거짓 유의가 난다: p={ph}"
+    # [10차 H02] 유한하지만 분산이 0인 입력 -> 통계량 미정의 -> p는 NaN이어야 한다
+    oc, _, pc, nu, nf, dgc = part3_one(np.ones(24), np.repeat(np.arange(6), 4).astype(str),
+                                       np.random.default_rng(1))
+    assert np.isnan(oc) and np.isnan(pc), f"상수 입력인데 p가 나온다: obs={oc} p={pc}"
+    assert np.isnan(pval(np.nan, [np.nan] * 9)), "NaN 관측에 p를 낸다"
 
     # [옛] NaN이 조용히 값으로 안 바뀐다 (D-030: 막을 것은 사례가 아니라 계열)
     x = r.normal(size=500)
     x[:7] = np.nan
-    o, _, _, n_used, n_fin = part3_one(x, gg.astype(str), np.random.default_rng(1))
+    o, _, _, n_used, n_fin, _ = part3_one(x, gg.astype(str), np.random.default_rng(1))
     assert n_fin == 493 and np.isfinite(o), "NaN 처리가 깨졌다"
     assert np.isnan(part3_one(np.full(500, np.nan), gg.astype(str),
                               np.random.default_rng(1))[0]), "전부 NaN인데 값이 나온다"
@@ -421,11 +452,13 @@ def main():
         for c, n, r in r3:
             cells = []
             for f in FEATS:
-                o, n0, p, *_ = r[f + key]
-                cells.append(f"{o:>6.3f}/{n0:>4.2f}{'*' if p <= 0.05 else ' '}"
-                             if np.isfinite(o) else f"{'--':>12}")
+                o, n0, p, nu, nf, dg = r[f + key]
+                mark = "x" if (dg or not np.isfinite(p)) else ("*" if p <= 0.05 else " ")
+                cells.append(f"{o:>6.3f}/{n0:>4.2f}{mark}"
+                             if np.isfinite(o) else f"{'-- 검정불가':>12}")
             print(f"  {c:<11}{r['size'][0]:>9.3f} | " + " ".join(cells))
-        print("   (칸 = ICC / 귀무평균 · * 는 순열 p <= 0.05)")
+        print("   (칸 = ICC / 귀무평균 · * 는 순열 p <= 0.05 · **x 는 검정 불가**"
+              " — 귀무가 한 점이거나 통계량 미정의. 10차 H01·H02)")
 
     judge(r1, r1b, r2, r3)
 
@@ -459,15 +492,23 @@ def judge(r1, r1b, r2, r3):
           f"Edge-Ring p={g2['Edge-Ring'][1]:.4f}(유효 {g2['Edge-Ring'][2]:,})"
           f" -> {'OK 슬롯 무관' if h5 else '[!] 얘들도 유의 — Loc 신호로 못 쓴다'}")
 
+    def sig(cell):
+        """유효한 검정만 유의로 센다 — 퇴화·미정의는 「검정 불가」다 (10차 H01·H02)."""
+        o, n0, p, nu, nf, dg = cell
+        return np.isfinite(p) and not dg and p <= 0.05
+
+    def ntest(r, key=""):
+        return sum(np.isfinite(r[f + key][2]) and not r[f + key][5] for f in FEATS)
+
     er = g3["Edge-Ring"]
-    h6 = all(er[f][2] <= 0.05 and er[f + "_res"][2] <= 0.05 for f in ("rc", "mp", "ctr"))
+    h6 = all(sig(er[f]) and sig(er[f + "_res"]) for f in ("rc", "mp", "ctr"))
     print("  H6 Edge-Ring " + " · ".join(
         f"{f} {er[f][0]:.3f}(p={er[f][2]:.3f})/잔차 {er[f+'_res'][0]:.3f}(p={er[f+'_res'][2]:.3f})"
         for f in ("rc", "mp", "ctr")) + f" -> {'OK' if h6 else 'X 잔차에서 죽음'}")
     ra = g3["Random"]
-    nsig = sum(ra[f][2] <= 0.05 for f in FEATS)
-    print(f"  H7 음성대조 Random 6종 중 유의 {nsig}개 "
-          f"(잔차 {sum(ra[f+'_res'][2] <= 0.05 for f in FEATS)}개) -> "
+    nsig = sum(sig(ra[f]) for f in FEATS)
+    print(f"  H7 음성대조 Random 유의 {nsig}/{ntest(ra)}개 (잔차 "
+          f"{sum(sig(ra[f+'_res']) for f in FEATS)}/{ntest(ra,'_res')}개) -> "
           f"{'OK 0 근처' if nsig == 0 else '[!] (3)에 lot 일반 효과가 섞여 있다'}")
 
     print("\n--- 사후 대조 (사전 등록 아님. 위 판정을 바꾸지 않는다) ---")
@@ -476,11 +517,12 @@ def judge(r1, r1b, r2, r3):
         m, p = g1b[c]
         print(f"     {c:<11} 배수 {m:>7.2f}  p={p:.4f}  "
               f"{'남는다' if p <= 0.05 and m > 1 else '사라진다'}")
-    print("  P2 제품 고정 귀무에서 ICC가 남는가 (3) — 클래스별 6종 중 유의 개수:")
+    print("  P2 제품 고정 귀무에서 ICC가 남는가 (3) — 유의/유효검정 (10차 H01 반영):")
     for c, n, r in r3:
-        k = sum(r[f + "_shp"][2] <= 0.05 for f in FEATS)
-        k0 = sum(r[f][2] <= 0.05 for f in FEATS)
-        print(f"     {c:<11} 전체재배치 {k0}/6 -> 제품고정 {k}/6")
+        k, kn = sum(sig(r[f + "_shp"]) for f in FEATS), ntest(r, "_shp")
+        k0, k0n = sum(sig(r[f]) for f in FEATS), ntest(r)
+        print(f"     {c:<11} 전체재배치 {k0}/{k0n} -> 제품고정 {k}/{kn}"
+              f"{'   [!] 퇴화 ' + str(6-kn) + '칸' if kn < 6 else ''}")
 
 
 def power_mode():
