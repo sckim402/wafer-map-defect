@@ -92,7 +92,7 @@ def repeat_terms(lot, cls, n_lot, n_cls):
 
 
 def part1(lot, cls, shape=None, out=True, tag=""):
-    """`shape`를 주면 **같은 제품(맵 shape) 안에서만** 라벨을 섞는다 (사후 대조)."""
+    """`shape`를 주면 **같은 맵 shape 안에서만** 라벨을 섞는다 (사후 대조)."""
     n_lot, n_cls = lot.max() + 1, len(CLS9)
     num, den = repeat_terms(lot, cls, n_lot, n_cls)
     R = num.sum(axis=0) / np.maximum(den.sum(axis=0), 1e-300)
@@ -155,7 +155,8 @@ def part2_power(lot, cls, slot, target="Loc", lams=(0.2, 0.4, 0.6, 0.8, 1.2), n_
 
     ⛔ **「비기각 = 슬롯 무관」이 아니다** — 방위 검정에서 이미 걸린 자리다.
     lot 안에서 슬롯 가중 `w(s) ∝ exp(λ(s−13)/12)`로 라벨을 다시 뽑아
-    **귀무 T의 95백분위를 넘는 비율**을 센다. (귀무 분포는 본 검사의 것을 그대로 쓴다)
+    **본검정과 같은 규칙(순열 `p ≤ 0.05`)으로 기각되는 비율**을 센다 (11차 — 전에는 귀무 95백분위였다).
+    귀무 분포는 본 검사의 것을 그대로 쓴다. `tcrit`(95백분위)은 **참고값으로만** 돌려준다.
     """
     n_lot, n_cls = lot.max() + 1, len(CLS9)
     ti = CLS9.index(target)
@@ -233,7 +234,7 @@ def part3_one(x, lot_c, rng, strata=None):
     귀무는 **웨이퍼를 lot에 재배치**한다 (lot별 장수 보존).
     ⛔ **lot 「안에서」 섞으면 안 된다** — 각 lot의 값 집합이 그대로라 ICC가 안 변하고
        귀무가 관측값과 같아진다. 2026-09-16에 실제로 그렇게 짰고 p가 전부 1 근처로 나왔다.
-    `strata`를 주면 **그 층 안에서만** 재배치한다 (사후 대조: 제품(맵 shape) 고정).
+    `strata`를 주면 **그 층 안에서만** 재배치한다 (사후 대조: 맵 shape 고정).
     """
     ok = np.isfinite(x)
     x, lot_c = x[ok], lot_c[ok]
@@ -284,7 +285,11 @@ def load_feats():
 
 
 def shape_ids():
-    """웨이퍼별 맵 shape을 「제품」 대리 변수로 쓴다 (클래스별 npz 순서)."""
+    """웨이퍼별 맵 shape (클래스별 npz 순서).
+
+    ⛔ **shape은 제품 ID가 아니다** (D-053) — 같은 shape의 다른 제품, 한 제품의 여러 shape,
+    shape과 라벨 선별을 함께 정하는 수집 묶음과 **구분되지 않는다.**
+    """
     with np.load(config.DATA_PROCESSED / "map_shapes.npz", allow_pickle=True) as z:
         return {c: z[c][:, 0].astype(np.int64) * 1000 + z[c][:, 1] for c in CLS9}
 
@@ -308,7 +313,7 @@ def part3(out=True):
                                       strata=sh_c)
         rows.append((c, int(sel.sum()), r))
         if out:
-            print(f"      {c:<11} 완료 (제품 {len(np.unique(sh_c))}종)", flush=True)
+            print(f"      {c:<11} 완료 (맵 shape {len(np.unique(sh_c))}종)", flush=True)
     return rows
 
 
@@ -466,15 +471,16 @@ def load_lots():
 def main():
     lot, cls, slot, shape, n_lot = load_lots()
     print("=" * 96)
-    print(f"  로트 신호 3종 · 라벨 {len(cls):,}장 · lot {n_lot:,}개 · 제품(맵 shape) "
+    print(f"  로트 신호 3종 · 라벨 {len(cls):,}장 · lot {n_lot:,}개 · 맵 shape "
           f"{shape.max()+1}종 · 순열 B={B_PERM} · lot 재추출 {B_BOOT:,} · SEED={SEED}")
     print("=" * 96)
 
-    print("\n-- (1) lot 내 재현성 (같은 lot 동료가 같은 클래스일 확률) --")
+    print("\n-- (1) lot 내 재현성 R_c = 앞 원소가 c인 lot 내 순서쌍 중 뒤도 c인 비율 "
+          "(순서쌍 균등 추출 가중 — 웨이퍼 평균이 아니다. 11차) --")
     r1 = part1(lot, cls)
-    r1b = part1(lot, cls, shape=shape, tag="[제품고정] ")       # 사후 대조
+    r1b = part1(lot, cls, shape=shape, tag="[shape고정] ")       # 사후 대조
     print(f"  {'클래스':<11}{'장수':>8}{'R_c':>9}{'귀무':>9}{'응집배수':>9}"
-          f"{'순열 p':>9}{'lot블록 95%':>22}{'제품고정 귀무':>14}{'배수':>7}{'p':>8}")
+          f"{'순열 p':>9}{'lot블록 95%':>22}{'shape고정 귀무':>14}{'배수':>7}{'p':>8}")
     print("-" * 96)
     for (c, R, R0, mult, p, lo, hi), (_, _, R0b, multb, pb, _, _) in zip(r1, r1b):
         n = int((cls == CLS9.index(c)).sum())
@@ -493,7 +499,7 @@ def main():
     r3 = part3()
     for key, name in (("", "A 원값 · 귀무=클래스 안 전체 재배치 (사전 등록)"),
                       ("_res", "A 잔차 · log size 회귀 잔차 (사전 등록)"),
-                      ("_shp", "B 원값 · 귀무=같은 제품(맵 shape) 안에서만 재배치 (사후 대조)")):
+                      ("_shp", "B 원값 · 귀무=같은 맵 shape 안에서만 재배치 (사후 대조)")):
         print(f"\n  [{name}]")
         print(f"  {'클래스':<11}{'size ICC':>9} | " + " ".join(f"{f:>12}" for f in FEATS))
         print("-" * 96)
@@ -600,16 +606,16 @@ def judge(r1, r1b, r2, r3):
                               "비유의는 크기의 보장이 아니다 (11차)")))
 
     print("\n--- 사후 대조 (사전 등록 아님. 위 판정을 바꾸지 않는다) ---")
-    print("  P1 제품(맵 shape) 고정 귀무에서도 응집이 남는가 (1):")
+    print("  P1 맵 shape 고정 귀무에서도 응집이 남는가 (1) — ⛔ 남든 안 남든 제품·선별 기여는 미식별 (D-053):")
     for c in CLS9:
         m, p = g1b[c]
         print(f"     {c:<11} 배수 {m:>7.2f}  p={p:.4f}  "
               f"{'남는다' if p <= 0.05 and m > 1 else '사라진다'}")
-    print("  P2 제품 고정 귀무에서 ICC가 남는가 (3) — 유의/유효검정 (10차 H01 반영):")
+    print("  P2 맵 shape 고정 귀무에서 ICC가 남는가 (3) — 유의/유효검정 (10차 H01 반영):")
     for c, n, r in r3:
         k, kn = sum(sig(r[f + "_shp"]) for f in FEATS), ntest(r, "_shp")
         k0, k0n = sum(sig(r[f]) for f in FEATS), ntest(r)
-        print(f"     {c:<11} 전체재배치 {k0}/{k0n} -> 제품고정 {k}/{kn}"
+        print(f"     {c:<11} 전체재배치 {k0}/{k0n} -> shape고정 {k}/{kn}"
               f"{'   [!] 퇴화 ' + str(6-kn) + '칸' if kn < 6 else ''}")
 
 

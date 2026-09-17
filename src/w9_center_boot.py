@@ -30,7 +30,7 @@ def demo():
     """§3-3 — 집계가 실제로 `Center`를 세는가, 그리고 승자 없음을 안 세는가."""
     assert HAS_CENTER.sum() == len(L) - 1, f"Center가 걸린 쌍이 7개가 아니다: {HAS_CENTER.sum()}"
     base = HAS_CENTER.mean()
-    assert abs(base - 7 / 28) < 1e-12, "우연 기준선이 25%가 아니다"
+    assert abs(base - 7 / 28) < 1e-12, "Center가 걸린 쌍의 조합 비율이 7/28이 아니다"
 
     k = int(np.flatnonzero(HAS_CENTER)[0])       # Center가 걸린 쌍
     m = int(np.flatnonzero(~HAS_CENTER)[0])      # 안 걸린 쌍
@@ -41,7 +41,7 @@ def demo():
     assert tally(winners(dec)) == (100, 0), "Center 아닌 승자를 Center로 센다"
     # 승자 없음은 분모에서 빠져야 한다
     assert tally(winners(np.zeros((100, len(PAIRS))))) == (0, 0), "승자 없음을 분모에 넣는다"
-    print(f"demo ok — 우연 기준선 {base:.1%} · 집계가 승자 없음을 분모에서 뺀다")
+    print(f"demo ok — 조합 비율 {base:.1%} · 집계가 승자 없음을 분모에서 뺀다")
 
 
 def tally(top):
@@ -55,7 +55,8 @@ def main():
     print("=" * 86)
     print(f"  환경 sklearn {sklearn.__version__} · numpy {np.__version__} "
           f"· B={B:,} · 재추출 SEED={SEED}")
-    print(f"  우연 기준선: Center가 걸린 쌍은 28쌍 중 {HAS_CENTER.sum()}개 = {HAS_CENTER.mean():.1%}")
+    print(f"  조합 비율: Center가 걸린 쌍은 28쌍 중 {HAS_CENTER.sum()}개 = {HAS_CENTER.mean():.1%}"
+          " — ⛔ argmax 승자의 귀무 확률이 아니다 (쌍 교환가능성 귀무 미구성, D-054)")
     print("=" * 86)
 
     rng = np.random.default_rng(SEED)

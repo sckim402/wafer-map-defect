@@ -39,8 +39,30 @@ def wilson(k, n, z=1.959963984540054):
     return c - h, c + h
 
 
+# 400장 표본의 **실제** 기각 수 / 적격 분모 — `docs/pattern_process_mapping.md` 표(2026-09-12, D-034).
+# ⛔ 12차(D-055): 10차·11차에 *"이 기록이 없다"*고 적고 비율에서 분모를 복원했는데 **기록은 처음부터 있었다.**
+#    `Loc`·`Edge-Ring`은 제외 뒤 분모가 400이 아니다 (374 · 387).
+SAMPLE400 = {"Edge-Loc": (289, 400), "Loc": (71, 374), "Edge-Ring": (97, 387), "Center": (31, 400)}
+
+
+def h3(full_rate, k, n):
+    """등록 H3 (§3): **전수 기각률**이 **400장 표본의 Wilson 구간** 안인가.
+
+    🔴 10차 H3 — 옛 구현은 방향이 반대였다(*400장 값*이 *전수의 lot 구간* 안인가).
+    대상과 분산이 둘 다 뒤바뀌었고, 등록 방향으로 재면 판정이 반대다.
+    """
+    lo, hi = wilson(k, n)
+    return lo <= full_rate <= hi, (lo, hi)
+
+
 def demo():
     """§3-3 — Wilson과 부트스트랩이 **독립 자료에서 일치**하는가 (deff ≈ 1)."""
+    # H3의 방향 — `Center`: 등록 방향(전수 9.67% ∈ Wilson(31/400))은 안,
+    # 옛 역방향(표본 7.75% ∈ 전수 lot 구간 [8.40, 10.95])은 밖. **둘이 갈리는 실제 사례다.**
+    ok, (lo, hi) = h3(0.0967, 31, 400)
+    assert ok and abs(lo - 0.0551) < 5e-5 and abs(hi - 0.1079) < 5e-5, f"H3 방향/구간: {lo:.4f},{hi:.4f}"
+    assert not (0.0840 <= 31 / 400 <= 0.1095), "역방향 대조가 갈리지 않는다 — 방향 시험이 무의미하다"
+    assert not h3(0.20, 31, 400)[0], "구간 밖 전수값을 통과시킨다"
     lo, hi = wilson(50, 100)
     assert abs((lo + hi) / 2 - 0.5) < 1e-9, "Wilson 중심이 안 맞는다"
     assert 0.39 < lo < 0.41 and 0.59 < hi < 0.61, f"Wilson 폭이 이상하다: {lo:.3f},{hi:.3f}"
@@ -123,11 +145,13 @@ def main():
     sep = el[6][0] > lo_[6][1]
     print(f"  H2 Edge-Loc 하한 {el[6][0]:.2%} {'>' if sep else '≤'} Loc 상한 {lo_[6][1]:.2%}"
           f"   → {'✅ 분리' if sep else '❌ 겹침'}")
-    print(f"  H3 400장 표본값이 전수 기각률의 구간 안인가:")
+    print("  H3 전수 기각률이 400장 표본의 Wilson 구간 안인가 (등록 방향 · 실제 k/n):")
     for c, n, ex, nl, r, w, b, deff in rows:
-        old = {"Edge-Loc": .722, "Loc": .190, "Edge-Ring": .251, "Center": .078}[c]
-        print(f"     {c:<11} 400장 {old:>6.1%}  vs 전수 lot구간 [{b[0]:.2%}, {b[1]:.2%}]"
-              f"  → {'안' if b[0] <= old <= b[1] else '❌ 밖'}")
+        k4, n4 = SAMPLE400[c]
+        ok, (lo, hi) = h3(r, k4, n4)
+        print(f"     {c:<11} 전수 {r:>6.2%}  vs 400장 {k4}/{n4} Wilson [{lo:.2%}, {hi:.2%}]"
+              f"  → {'✅ 안' if ok else '❌ 밖'}")
+    print("     ⛔ 「안」은 한 번의 구간 포함이다 — 400장 표본의 대표성·무편향을 증명하지 않는다")
 
 
 if __name__ == "__main__":
