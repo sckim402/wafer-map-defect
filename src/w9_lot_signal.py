@@ -18,8 +18,10 @@ import numpy as np
 sys.path.insert(0, "src")
 import config
 
-B_PERM = int(sys.argv[1]) if len(sys.argv) > 1 else 999
-B_BOOT = int(sys.argv[2]) if len(sys.argv) > 2 else 2000
+# 🔴 11차 — 플래그를 먼저 걷어내지 않아 `--power` 단독 인수가 int()에서 터졌다 (O-03).
+_nums = [a for a in sys.argv[1:] if not a.startswith("--")]
+B_PERM = int(_nums[0]) if len(_nums) > 0 else 999
+B_BOOT = int(_nums[1]) if len(_nums) > 1 else 2000
 SEED = 20260916
 N_SLOT = 25
 FEATS = ("cov", "ctr", "cv", "rc", "mp", "cc")
@@ -65,12 +67,20 @@ def pval(obs, null, rtol=1e-9):
     ⓑ **정의되지 않은 통계량에 `p`를 내면 안 된다.** `obs`가 NaN이면
        `NaN >= NaN`이 전부 False라 **최소 `p`가 나왔다.** 이제 **NaN을 낸다** —
        「검정 불가」는 「가장 유의」의 정반대다.
+
+    ⓒ 🔴 **11차 외부 검토 — ⓑ를 고친 자리 옆에 같은 결함이 남아 있었다.**
+       귀무가 **일부만** NaN이면 `nanmax`로 통과한 뒤 **분모에는 `len(null)`을 그대로** 썼다.
+       `pval(1, [1, NaN×998])`이 **0.002**를 냈다 — 유효 귀무가 1개(그것도 동점)인데
+       **998개를 「관측보다 작았다」로 세는 것과 같다.** 분모도 **유효한 것만** 센다.
     """
     null = np.asarray(null, dtype=float)
-    if not np.isfinite(obs) or not np.isfinite(null).any():
+    ok = np.isfinite(null)
+    n_ok = int(ok.sum())
+    if not np.isfinite(obs) or n_ok == 0:
         return np.nan
-    tol = rtol * max(abs(obs), float(np.nanmax(np.abs(null))), 1e-300)
-    return (1 + int(np.sum(null >= obs - tol))) / (1 + len(null))
+    null = null[ok]
+    tol = rtol * max(abs(obs), float(np.max(np.abs(null))), 1e-300)
+    return (1 + int(np.sum(null >= obs - tol))) / (1 + n_ok)
 
 
 # ───────────────────────── ① lot 내 재현성 ─────────────────────────
@@ -184,7 +194,10 @@ def part2_power(lot, cls, slot, target="Loc", lams=(0.2, 0.4, 0.6, 0.8, 1.2), n_
             new_t = is_t.copy()
             new_t[g] = (rank - start) < k_of                 # lot마다 원래 장수만큼 고른다
             O = np.bincount(slot[new_t], minlength=N_SLOT).astype(float)
-            hit += (((O - Et) ** 2) / np.maximum(Et, 1e-300)).sum() > tcrit
+            # 🔴 11차 — 전에는 `> tcrit`(귀무 95백분위)였는데 **본검정은 `pval <= 0.05`**다.
+            #    두 규칙은 경계에서 갈린다(귀무 0..998·관측 948.5에서 백분위는 기각,
+            #    본검정 p는 0.051). **검출력은 「그 검정의」 검출력이라야 한다.**
+            hit += pval((((O - Et) ** 2) / np.maximum(Et, 1e-300)).sum(), null) <= 0.05
             means.append((slot[new_t] + 1).mean())
         rows.append((lam, hit / n_sim, float(np.mean(means)) - base_mean))
     return tcrit, base_mean, obs_dev, rows
@@ -204,7 +217,12 @@ def icc(x, g):
     ss_w = float(((x - m[g]) ** 2).sum())
     ss_t = float(((x - x.mean()) ** 2).sum())
     n_tot, n_grp = len(x), len(n)
-    if ss_t <= 0 or n_tot <= n_grp:
+    # 🔴 11차 — `ss_t <= 0`은 상수 입력을 못 막는다. `np.full(24, 0.1)`은 원소가 전부
+    #    같은데 평균 반올림으로 양의 미소 `ss_t`(~2e-33)가 생겨 **icc가 1.0을 냈다.**
+    #    `demo()`는 `ones`만 시험했고 그건 우연히 정확히 0이 나오는 한 점이다.
+    #    「값이 하나뿐인 자료」는 **검정 불가**이지 「완전 일치」가 아니다.
+    scale = float(np.max(np.abs(x))) if n_tot else 0.0
+    if not np.isfinite(ss_t) or n_tot <= n_grp or ss_t <= 1e-24 * n_tot * max(scale, 1.0) ** 2:
         return np.nan
     return 1.0 - (ss_w / (n_tot - n_grp)) / (ss_t / (n_tot - 1))
 
@@ -371,6 +389,36 @@ def demo():
     assert np.isnan(oc) and np.isnan(pc), f"상수 입력인데 p가 나온다: obs={oc} p={pc}"
     assert np.isnan(pval(np.nan, [np.nan] * 9)), "NaN 관측에 p를 낸다"
 
+    # ── [11차] 같은 계열의 다섯 번째·여섯 번째. **고친 자리 옆을 센다** ──
+    # ⓐ 귀무가 **일부만** NaN이면 분모도 유효한 것만이라야 한다.
+    #    옛 판은 무효 귀무를 「관측보다 작았다」로 세어 p를 1/999까지 떨어뜨렸다.
+    mixed = np.r_[10.0, np.full(998, np.nan)]
+    assert abs(pval(100.0, mixed) - 0.5) < 1e-12, \
+        f"무효 귀무가 분모에 남아 있다 (11차): {pval(100.0, mixed)}"
+    assert np.isnan(pval(1.0, np.full(9, np.nan))), "유효 귀무 0개인데 p를 낸다"
+    # ⓑ 「값이 하나뿐인 자료」는 **검정 불가**다. `ones`만 시험하면 우연히 통과한다 —
+    #    소수 상수는 평균 반올림으로 양의 미소 SS_t가 생겨 옛 판이 ICC=1.0을 냈다.
+    for const in (0.1, 3.7, -2.5, 1e6):
+        assert np.isnan(icc(np.full(24, const), np.repeat(np.arange(6), 4))), \
+            f"상수 {const}인데 ICC가 나온다 (11차)"
+    assert np.isfinite(icc(r.normal(size=24), np.repeat(np.arange(6), 4))), \
+        "상수 가드가 멀쩡한 자료까지 막는다"
+    # ⓒ 판정이 **3상태**인가 — 유효 검정이 0개면 「통과」가 아니라 「판정 불가」다
+    import contextlib as _c, io as _io
+    dead = (np.nan, np.nan, np.nan, 0, 0, True)
+    r3d = [(c, 0, {f + k: dead for f in FEATS for k in ("", "_res", "_shp")})
+           for c in CLS9[:-1]]
+    r1d = [(c, 0.0, 0.0, 0.0, 1.0, np.nan, np.nan) for c in CLS9]
+    r2d = [(c, 0, 0, 0.0, 0.0, 1.0, 0.0, 0.0) for c in CLS9]
+    buf = _io.StringIO()
+    with _c.redirect_stdout(buf):
+        judge(r1d, r1d, r2d, r3d)
+    out = buf.getvalue()
+    assert "OK 0 근처" not in out, "유효 검정 0개인데 H7이 통과로 인쇄된다 (11차)"
+    assert "OK 슬롯 무관" not in out, "비유의를 「무관」으로 인쇄한다 (11차)"
+    assert "OK 전멸 신호" not in out, "동시발생 p로 「전멸」을 판정한다 (11차)"
+    assert out.count("⬜ 판정 불가") >= 4, f"3상태가 아니다 (11차):\n{out}"
+
     # [옛] NaN이 조용히 값으로 안 바뀐다 (D-030: 막을 것은 사례가 아니라 계열)
     x = r.normal(size=500)
     x[:7] = np.nan
@@ -464,7 +512,24 @@ def main():
 
 
 def judge(r1, r1b, r2, r3):
-    """사전 등록 판정 — 경고가 아니라 판정에 연결한다 (§7 폐기 목록)."""
+    """사전 등록 판정 — 경고가 아니라 판정에 연결한다 (§7 폐기 목록).
+
+    🔴 **11차 외부 검토로 통째로 다시 썼다. 이유는 셋이다.**
+
+    ⓐ **판정이 2상태였다.** 「통과/기각」뿐이라 **「검정 불가」가 갈 자리가 없었다.**
+       유효 검정이 0개여도 `유의 0개 -> OK 0 근처`가 나왔다 — 10차가 `sig()`로
+       **집계에서는** 퇴화를 뺐는데 **최종 한 줄에서는 다시 넣고 있었다.**
+    ⓑ **등록문이 말한 대상과 다른 것을 쟀다.**
+       `H3`은 *"lot 단위 전멸"*인데 코드는 **동시발생 `p`**로 판정했고,
+       `H5`·`H7`은 *"무관"*·*"0 근처"*라는 **크기** 주장인데 **비유의**로 판정했다.
+       ⛔ **비유의는 무관이 아니다** — §2-②에 내가 직접 *"이 수가 작으면 비유의여도
+       「슬롯 무관」이 아니라 「못 잰다」"*라고 써 놓고 코드는 반대로 인쇄했다.
+    ⓒ **`H1`이 `H2`의 거부 조건을 안 받았다.** 등록문이 *"「전부 응집했다」는 H1의
+       성공이 아니다"*라고 못박았는데 `OK 응집`과 `① 판정 불가`가 나란히 인쇄됐다.
+
+    → **수치 조건(`[수치]`)과 등록 주장의 최종 상태(`=>`)를 따로 인쇄한다.**
+    """
+    OK, NO, UNK = "OK", "X", "⬜ 판정 불가"
     g1 = {c: (mult, p) for c, R, R0, mult, p, lo, hi in r1}
     g1b = {c: (mult, p) for c, R, R0, mult, p, lo, hi in r1b}
     g2 = {c: (T, p, ne) for c, n, ne, T, T0, p, ms, es in r2}
@@ -472,25 +537,36 @@ def judge(r1, r1b, r2, r3):
     print("\n" + "=" * 96)
     print("=== 사전 등록 판정 (docs/w9_lot_signal.md §3) ===")
 
-    h1 = all(g1[c][0] > 1 and g1[c][1] <= 0.05 for c in ("Center", "Edge-Ring"))
-    print(f"  H1 Center {g1['Center'][0]:.2f}배 p={g1['Center'][1]:.4f} · "
-          f"Edge-Ring {g1['Edge-Ring'][0]:.2f}배 p={g1['Edge-Ring'][1]:.4f} -> "
-          f"{'OK 응집' if h1 else 'X 기각'}")
+    h1n = all(g1[c][0] > 1 and g1[c][1] <= 0.05 for c in ("Center", "Edge-Ring"))
     rm, rp = g1["Random"]
     h2 = rp > 0.05
-    print(f"  H2 음성대조 Random {rm:.2f}배 p={rp:.4f} -> "
-          f"{'OK 귀무 안' if h2 else '[!] Random도 응집 — (1)은 판정 불가'}")
+    print(f"  H1 Center {g1['Center'][0]:.2f}배 p={g1['Center'][1]:.4f} · "
+          f"Edge-Ring {g1['Edge-Ring'][0]:.2f}배 p={g1['Edge-Ring'][1]:.4f}  "
+          f"[수치] {OK if h1n else NO}")
+    print(f"     => ①의 신호 판정: {OK if (h1n and h2) else UNK}"
+          + ("" if h2 else " — H2가 깨졌다. 등록문: 「전부 응집했다」는 H1의 성공이 아니다"))
+    print(f"  H2 음성대조 Random {rm:.2f}배 p={rp:.4f}  "
+          f"[수치] {'이 검정에서 비유의' if h2 else NO}")
+    print(f"     => {OK if h2 else '[!] Random도 응집 — ①은 클래스 특이성 판정 불가'}")
     nf = g1["Near-full"]
-    print(f"  H3 Near-full {nf[0]:.2f}배 p={nf[1]:.4f} -> "
-          f"{'OK 전멸 신호' if nf[1] <= 0.05 else '[?] 검출력 부족 — 「못 잰다」'}")
+    print(f"  H3 Near-full 동시발생 {nf[0]:.2f}배 p={nf[1]:.4f}  "
+          f"[수치] 응집 {OK if nf[1] <= 0.05 else NO}")
+    print(f"     => 등록 예측(lot 단위 전멸): {UNK} — ⛔ **이 코드는 전멸을 재지 않는다.**"
+          "\n        전멸 lot의 도수·분모·정의가 없고 동시발생 `R`로는 역산되지 않는다 (11차)")
 
     T, p, ne = g2["Loc"]
-    print(f"  H4 Loc 슬롯 T={T:.1f} p={p:.4f} (유효표본 {ne:,}) -> "
-          f"{'OK 슬롯 의존' if p <= 0.05 else 'X 비유의'}")
+    print(f"  H4 Loc 슬롯 T={T:.1f} p={p:.4f} (유효표본 {ne:,})  "
+          f"[수치] {'유의' if p <= 0.05 else '비유의'}")
+    print(f"     => {OK + ' 슬롯 의존' if p <= 0.05 else UNK} — 비유의는 "
+          "「무관」이 아니다. 등록문 §2-②의 「유효 표본이 작으면 못 잰다」는 "
+          "기준이 미등록이라 ❌로 닫지 않는다 (11차)")
     h5 = all(g2[c][1] > 0.05 for c in ("Center", "Edge-Ring"))
     print(f"  H5 음성대조 Center p={g2['Center'][1]:.4f}(유효 {g2['Center'][2]:,}) · "
-          f"Edge-Ring p={g2['Edge-Ring'][1]:.4f}(유효 {g2['Edge-Ring'][2]:,})"
-          f" -> {'OK 슬롯 무관' if h5 else '[!] 얘들도 유의 — Loc 신호로 못 쓴다'}")
+          f"Edge-Ring p={g2['Edge-Ring'][1]:.4f}(유효 {g2['Edge-Ring'][2]:,})  "
+          f"[수치] {'둘 다 비유의' if h5 else '유의 있음'}")
+    print(f"     => 등록 예측(슬롯 무관): "
+          + (f"{UNK} — 반증 조건이 발동하지 않았을 뿐이고 **동등성 범위가 미등록**이다 (11차)"
+             if h5 else "[!] 얘들도 유의 — Loc 신호로 못 쓴다"))
 
     def sig(cell):
         """유효한 검정만 유의로 센다 — 퇴화·미정의는 「검정 불가」다 (10차 H01·H02)."""
@@ -500,16 +576,28 @@ def judge(r1, r1b, r2, r3):
     def ntest(r, key=""):
         return sum(np.isfinite(r[f + key][2]) and not r[f + key][5] for f in FEATS)
 
+    def valid(cell):
+        return np.isfinite(cell[2]) and not cell[5]
+
     er = g3["Edge-Ring"]
-    h6 = all(sig(er[f]) and sig(er[f + "_res"]) for f in ("rc", "mp", "ctr"))
+    keys6 = [f + k for f in ("rc", "mp", "ctr") for k in ("", "_res")]
+    n_ok6 = sum(valid(er[k]) for k in keys6)
+    h6 = n_ok6 == 6 and all(sig(er[k]) for k in keys6)
     print("  H6 Edge-Ring " + " · ".join(
         f"{f} {er[f][0]:.3f}(p={er[f][2]:.3f})/잔차 {er[f+'_res'][0]:.3f}(p={er[f+'_res'][2]:.3f})"
-        for f in ("rc", "mp", "ctr")) + f" -> {'OK' if h6 else 'X 잔차에서 죽음'}")
+        for f in ("rc", "mp", "ctr")) + f"  [수치] 유효 {n_ok6}/6")
+    print(f"     => {OK if h6 else (UNK + ' — 유효 검정이 6개가 아니다 (11차)'
+                                    if n_ok6 < 6 else NO + ' 잔차에서 죽음')}"
+          "\n        ⚠ 보고 ICC는 **자유도 보정판**이고 등록 식 `1−SSw/SSt`가 아니다 (11차)")
     ra = g3["Random"]
-    nsig = sum(sig(ra[f]) for f in FEATS)
-    print(f"  H7 음성대조 Random 유의 {nsig}/{ntest(ra)}개 (잔차 "
-          f"{sum(sig(ra[f+'_res']) for f in FEATS)}/{ntest(ra,'_res')}개) -> "
-          f"{'OK 0 근처' if nsig == 0 else '[!] (3)에 lot 일반 효과가 섞여 있다'}")
+    nsig, nt = sum(sig(ra[f]) for f in FEATS), ntest(ra)
+    print(f"  H7 음성대조 Random 유의 {nsig}/{nt}개 (잔차 "
+          f"{sum(sig(ra[f+'_res']) for f in FEATS)}/{ntest(ra,'_res')}개)  "
+          f"[수치] {'전부 비유의' if (nt and nsig == 0) else ('유효 검정 0개' if not nt else '유의 있음')}")
+    print("     => " + ("[!] (3)에 lot 일반 효과가 섞여 있다" if nsig
+                        else (UNK + " — 유효 검정이 0개다 (11차)" if not nt else
+                              UNK + " — 등록 예측은 「0 근처」라는 **크기** 주장이고 "
+                              "비유의는 크기의 보장이 아니다 (11차)")))
 
     print("\n--- 사후 대조 (사전 등록 아님. 위 판정을 바꾸지 않는다) ---")
     print("  P1 제품(맵 shape) 고정 귀무에서도 응집이 남는가 (1):")
@@ -529,11 +617,13 @@ def power_mode():
     """②의 비유의를 「얼마나 큰 편중까지 놓치는가」로 바꾼다 (사후)."""
     lot, cls, slot, shape, n_lot = load_lots()
     print("=" * 96)
-    print(f"  (2) 검출력 — 슬롯 가중 w(s) ∝ exp(λ(s−13)/12) · 귀무 B={B_PERM} · 모의 300회")
+    n_sim = 400          # 🔴 11차 — 전에는 머리글에 「300회」가 박혀 있었고 실제는 400이었다
+    print(f"  (2) 검출력 — 슬롯 가중 w(s) ∝ exp(λ(s−13)/12) · 귀무 B={B_PERM} · 모의 {n_sim}회"
+          "\n      판정 규칙은 **본검정과 같은 순열 p ≤ 0.05**다 (11차. 전에는 95백분위였다)")
     print("=" * 96)
     for target in ("Loc", "Center", "Edge-Ring"):
         tcrit, base, obs, rows = part2_power(lot, cls, slot, target=target,
-                                             lams=(0.05, 0.10, 0.15, 0.20, 0.40), n_sim=400)
+                                             lams=(0.05, 0.10, 0.15, 0.20, 0.40), n_sim=n_sim)
         print(f"\n  {target} (귀무 T 95백분위 {tcrit:.2f} · 순열 기대 평균슬롯 {base:.3f} · "
               f"실측 이탈 {obs:+.3f}칸)")
         print(f"     {'λ':>5}{'기각률':>9}{'평균슬롯 이동':>14}")

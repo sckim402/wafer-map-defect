@@ -89,12 +89,19 @@ def winners(dec):
     NaN 쌍이 승자가 된다.** D-027이 고친 것과 같은 계열이고, 이 함수의
     `demo()`가 0과 음수만 시험해 놓쳤다. 분모 `row[i]+row[j]`가 0인 draw에서
     실제로 발생할 수 있다(D-029 실행분에서는 0건이었다).
+
+    🔴 **11차 외부 검토 — 동점을 정확한 `==`로만 셌다.** 수학적으로 같은
+    `0.3-0.2`와 `0.2-0.1`이 `0.09999999999999998 / 0.1`로 갈려 **뒤엣것이 단독 승자**가 됐다.
+    감소량은 뺄셈으로 만들어지므로 **동점이 정확히 같은 비트로 오지 않는다** —
+    10차가 순열 `p`에서 고친 것(`pval`의 상대 허용오차)과 **같은 계열**이고,
+    여기만 안 고쳤다. **상대 허용오차 안이면 동점으로 센다.**
     """
     bad_row = ~np.isfinite(dec).all(axis=1)
     safe = np.where(np.isfinite(dec), dec, -np.inf)
     mx = safe.max(axis=1)
     top = safe.argmax(axis=1)
-    n_at_max = (safe == mx[:, None]).sum(axis=1)
+    tol = 1e-12 * np.maximum(np.abs(mx), 1.0)
+    n_at_max = (safe >= (mx - tol)[:, None]).sum(axis=1)
     return np.where(bad_row | (n_at_max > 1) | (mx <= 0), -1, top)
 
 
@@ -116,7 +123,18 @@ def demo():
     nan_ok = np.zeros((50, len(PAIRS))); nan_ok[:, 3] = 0.2; nan_ok[:, 9] = np.nan
     assert (winners(nan_ok) < 0).all(), "NaN이 한 쌍이라도 있으면 그 draw는 버려야 한다"
 
-    print("demo ok — 0/음수/NaN 입력에서 승자 0건, 명백한 승자는 200/200")
+    # [11차] 부동소수 동점 — 감소량은 **뺄셈으로** 만들어지므로 같은 값이 같은 비트로 안 온다.
+    #        0과 음수와 NaN만 시험하면 이 계열을 놓친다 (D-030: 막을 것은 사례가 아니라 계열).
+    tie = np.zeros((1, len(PAIRS)))
+    tie[0, 0], tie[0, 7] = 0.3 - 0.2, 0.2 - 0.1          # 수학적으로 같고 비트는 다르다
+    assert tie[0, 0] != tie[0, 7], "이 검사가 무력하다 — 두 값이 실제로 같아졌다"
+    assert winners(tie)[0] == -1, \
+        f"수학적 동점을 부동소수 우열로 세어 승자를 냈다 (11차): {winners(tie)[0]}"
+    near = np.zeros((1, len(PAIRS)))
+    near[0, 0], near[0, 7] = 0.1, 0.1 * (1 + 1e-6)       # 허용오차 밖 — 진짜 차이다
+    assert winners(near)[0] == 7, "허용오차가 진짜 차이까지 동점으로 먹는다"
+
+    print("demo ok — 0/음수/NaN/부동소수 동점에서 승자 0건, 명백한 승자는 200/200")
 
 
 def main():
