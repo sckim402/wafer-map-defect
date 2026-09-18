@@ -3,6 +3,7 @@
     python src/w9_confound_final.py --demo    # 합성 실패 조건만 (§3-3)
     python src/w9_confound_final.py --count   # 교란 변수 기술 통계만 (설계 정보, 판정 없음)
     python src/w9_confound_final.py           # demo → M1 → M2 → 판정
+    python src/w9_confound_final.py --posthoc # ⚠ 사후 탐색 (등록 밖): N/S 단독 · 층화가 기대는 장수
 
 교란 변수: N = 전체 불량 die 수, S = 유효 die 수, N×S = 결합 층.
 판정은 구간·순서 관계로만 한다 — 합격선 없음 (§3-13).
@@ -282,8 +283,52 @@ def main():
         print(f"  {a[:6]+'↔'+b[:6]:<14}" + " ".join(f"{c:>11}" for c in row))
 
 
+def posthoc():
+    """⚠ 사후 탐색 — 사전 등록 밖이다. 판정을 바꾸지 않는다 (docs §5).
+
+    ⓐ M1을 N 단독·S 단독으로 가른다 — N은 Near-full·Random에서 **패턴의 정의에 가깝고**
+       S(맵 크기)는 순수한 부수 변수라 둘을 합친 0.601은 해석이 섞인다.
+    ⓑ 층화 추정이 실제로 **몇 장**에 기대는가 — κ가 작아서 (두 클래스가 다 있는 층에 속한 웨이퍼 수).
+    """
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import f1_score
+    y, lot, F, seeds, d, conf = load()
+    L = config.PATTERN_CLASSES
+    for nm, cols in (("N 단독", ["N"]), ("S 단독", ["S"])):
+        X = np.column_stack([conf[c] for c in cols])
+        f1s = []
+        for s_ in range(len(seeds)):
+            p = np.empty(len(y), dtype=object)
+            for f in np.unique(F[s_]):
+                te = F[s_] == f
+                p[te] = RandomForestClassifier(n_estimators=300, min_samples_leaf=2, n_jobs=-1,
+                                               random_state=0, class_weight="balanced"
+                                               ).fit(X[~te], y[~te]).predict(X[te])
+            f1s.append(f1_score(y, p.astype(str), labels=L, average=None, zero_division=0))
+        f1s = np.array(f1s).mean(axis=0)
+        print(f"  [사후] {nm}: macro {f1s.mean():.3f} · " +
+              " ".join(f"{c[:6]} {v:.2f}" for c, v in zip(L, f1s)))
+    print("  [사후] 층화 추정이 기대는 웨이퍼 수 (두 클래스가 다 있는 층)")
+    for ft in FEATS:
+        a_, b_ = DESIGN[ft]
+        m = ((y == a_) | (y == b_)) & np.isfinite(d[ft])
+        pos = y[m] == b_
+        row = []
+        for key in CONF:
+            g = layer_ids({k: v[m] for k, v in conf.items()}, key)
+            use = np.zeros(m.sum(), bool)
+            for s_ in np.unique(g):
+                mm = g == s_
+                if 0 < pos[mm].sum() < mm.sum():
+                    use |= mm
+            row.append(f"{key} {int(use[pos].sum())}+{int(use[~pos].sum())}/{int(pos.sum())}+{int((~pos).sum())}")
+        print(f"    {ft:<4}{a_}↔{b_}: " + " · ".join(row))
+
+
 if __name__ == "__main__":
-    if "--demo" in sys.argv:
+    if "--posthoc" in sys.argv:
+        posthoc()
+    elif "--demo" in sys.argv:
         demo()
     elif "--count" in sys.argv:
         count_only()
